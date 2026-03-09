@@ -9,6 +9,7 @@
         xmlns:training="clr-namespace:PhysicsFlow.App.Views.Training"
         xmlns:hm="clr-namespace:PhysicsFlow.App.Views.HistoryMatching"
         xmlns:forecast="clr-namespace:PhysicsFlow.App.Views.Forecast"
+        xmlns:vis="clr-namespace:PhysicsFlow.App.Views.Visualisation"
         xmlns:ai="clr-namespace:PhysicsFlow.App.Views.AIAssistant"
         Title="PhysicsFlow — AI Reservoir Simulation Platform"
         Height="900" Width="1440"
@@ -97,7 +98,7 @@
                 <Separator Margin="0,0,0,8"/>
                 <Button Content="⚙  Settings" Style="{StaticResource NavButtonStyle}"
                         Command="{Binding OpenSettingsCommand}" Padding="8,8"/>
-                <TextBlock Text="v1.0.0-dev" FontSize="9"
+                <TextBlock Text="v1.2.0" FontSize="9"
                            Foreground="{DynamicResource MahApps.Brushes.Gray6}"
                            HorizontalAlignment="Center" Margin="0,4,0,0"/>
             </StackPanel>
@@ -121,6 +122,12 @@
                 </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:ForecastViewModel}">
                     <forecast:ForecastView />
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:ReservoirView3DViewModel}">
+                    <vis:ReservoirView3D />
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:CrossSectionViewModel}">
+                    <vis:CrossSectionView />
                 </DataTemplate>
             </ContentControl.Resources>
         </ContentControl>

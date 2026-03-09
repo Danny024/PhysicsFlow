@@ -1,0 +1,159 @@
+<UserControl x:Class="PhysicsFlow.App.Views.Visualisation.ReservoirView3D"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+             xmlns:h="http://helix-toolkit.org/wpf"
+             mc:Ignorable="d"
+             d:DesignHeight="700" d:DesignWidth="1100"
+             Background="#0D1B2E">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+
+        <Style x:Key="CardPanel" TargetType="Border">
+            <Setter Property="Background" Value="#0A1628"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <Style x:Key="ToolbarLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8899AA"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="12,0,4,0"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+
+        <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource MahApps.Styles.Button.Flat}">
+            <Setter Property="Foreground" Value="#00CC66"/>
+            <Setter Property="BorderBrush" Value="#1A4A2A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="4,0"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Header -->
+            <RowDefinition Height="Auto"/>  <!-- Controls -->
+            <RowDefinition Height="*"/>     <!-- 3D Viewport -->
+            <RowDefinition Height="Auto"/>  <!-- Status bar -->
+        </Grid.RowDefinitions>
+
+        <!-- ═══ Row 0: Header ═══════════════════════════════════════════════ -->
+        <Border Grid.Row="0" Style="{StaticResource CardPanel}" Margin="12,12,12,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="3D Reservoir Viewer"
+                               FontSize="18" FontWeight="SemiBold"
+                               Foreground="#00CC66"/>
+                    <TextBlock Text="Animated property visualisation — Pressure / Water Saturation / Permeability"
+                               FontSize="11" Foreground="#8899AA" Margin="0,2,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding PlayAnimationCommand}"
+                            Style="{StaticResource ActionButton}"
+                            ToolTip="Play timestep animation">
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconMaterial Kind="Play" Width="14" Height="14" Margin="0,0,6,0"/>
+                            <TextBlock Text="Play"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding PauseAnimationCommand}"
+                            Style="{StaticResource ActionButton}"
+                            ToolTip="Pause animation">
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconMaterial Kind="Pause" Width="14" Height="14" Margin="0,0,6,0"/>
+                            <TextBlock Text="Pause"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding ExportVtkCommand}"
+                            Style="{StaticResource ActionButton}"
+                            ToolTip="Export current field to VTK format">
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconMaterial Kind="Export" Width="14" Height="14" Margin="0,0,6,0"/>
+                            <TextBlock Text="Export VTK"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══ Row 1: Controls ══════════════════════════════════════════════ -->
+        <Border Grid.Row="1" Style="{StaticResource CardPanel}" Margin="12,4,12,0">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                <TextBlock Text="Property:" Style="{StaticResource ToolbarLabel}" Margin="0,0,4,0"/>
+                <ComboBox ItemsSource="{Binding PropertyOptions}"
+                          SelectedItem="{Binding SelectedProperty}"
+                          Width="160" VerticalAlignment="Center"
+                          Background="#112233" Foreground="White" BorderBrush="#1E3A5F"/>
+
+                <TextBlock Text="Timestep:" Style="{StaticResource ToolbarLabel}"/>
+                <Slider Value="{Binding CurrentTimestep}"
+                        Minimum="0" Maximum="{Binding TotalTimesteps}"
+                        Width="200" VerticalAlignment="Center"
+                        Foreground="#00CC66"
+                        TickFrequency="1" IsSnapToTickEnabled="True"/>
+                <TextBlock Text="{Binding CurrentTimestepLabel}"
+                           Foreground="#CCDDEE" FontSize="11" FontFamily="Consolas"
+                           VerticalAlignment="Center" Margin="6,0,0,0" MinWidth="40"/>
+
+                <TextBlock Text="Opacity:" Style="{StaticResource ToolbarLabel}"/>
+                <Slider Value="{Binding VoxelOpacity}"
+                        Minimum="0.1" Maximum="1.0"
+                        Width="120" VerticalAlignment="Center"
+                        Foreground="#00CC66"/>
+
+                <CheckBox Content="Show wells"
+                          IsChecked="{Binding ShowWells}"
+                          Foreground="#AABBCC" VerticalAlignment="Center"
+                          Margin="16,0,0,0"/>
+            </WrapPanel>
+        </Border>
+
+        <!-- ═══ Row 2: Helix 3D Viewport ════════════════════════════════════ -->
+        <Border Grid.Row="2" Margin="12,4,12,4">
+            <h:HelixViewport3D x:Name="Viewport3D"
+                               Background="#0A1628"
+                               ShowCoordinateSystem="True"
+                               ShowFrameRate="True"
+                               ZoomExtentsWhenLoaded="True"
+                               IsHeadLightEnabled="True">
+                <h:DefaultLights/>
+                <ModelVisual3D Content="{Binding ReservoirModel3D}"/>
+                <ModelVisual3D Content="{Binding WellModel3D}"
+                               Visibility="{Binding ShowWells,
+                                   Converter={StaticResource BoolToVisConverter}}"/>
+            </h:HelixViewport3D>
+        </Border>
+
+        <!-- ═══ Row 3: Status bar ════════════════════════════════════════════ -->
+        <Border Grid.Row="3" Background="#060E1A" Padding="12,6" Margin="12,0,12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           Foreground="#8899AA" FontSize="11" VerticalAlignment="Center"/>
+                <ProgressBar Grid.Column="1"
+                             IsIndeterminate="{Binding IsLoading}"
+                             Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisConverter}}"
+                             Width="120" Height="4"
+                             Foreground="#00CC66" Background="#1A3A2A"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -4,6 +4,8 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using PhysicsFlow.Infrastructure.Engine;
 using PhysicsFlow.Infrastructure.Data;
+using PhysicsFlow.Infrastructure.Reports;
+using PhysicsFlow.Infrastructure.Export;
 using PhysicsFlow.ViewModels;
 
 namespace PhysicsFlow.App;
@@ -50,6 +52,8 @@ public partial class App : Application
         services.AddSingleton<GrpcEngineClient>();
         services.AddSingleton<OllamaAgentClient>();
         services.AddSingleton<AppDbService>();
+        services.AddSingleton<IReportService, ReportService>();
+        services.AddSingleton<IExcelExportService, ExcelExportService>();
 
         // ViewModels
         services.AddSingleton<MainWindowViewModel>();
@@ -58,6 +62,8 @@ public partial class App : Application
         services.AddTransient<TrainingViewModel>();
         services.AddTransient<HistoryMatchingViewModel>();
         services.AddTransient<ForecastViewModel>();
+        services.AddTransient<ReservoirView3DViewModel>();
+        services.AddTransient<CrossSectionViewModel>();
         services.AddSingleton<AIAssistantViewModel>();
 
         // Views

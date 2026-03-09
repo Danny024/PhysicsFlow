@@ -17,6 +17,8 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly TrainingViewModel _training;
     private readonly HistoryMatchingViewModel _historyMatching;
     private readonly ForecastViewModel _forecast;
+    private readonly ReservoirView3DViewModel _reservoirView3D;
+    private readonly CrossSectionViewModel _crossSection;
     public  AIAssistantViewModel AIAssistant { get; }
 
     // ── Navigation ────────────────────────────────────────────────────────────
@@ -40,6 +42,8 @@ public partial class MainWindowViewModel : ObservableObject
         TrainingViewModel training,
         HistoryMatchingViewModel historyMatching,
         ForecastViewModel forecast,
+        ReservoirView3DViewModel reservoirView3D,
+        CrossSectionViewModel crossSection,
         AIAssistantViewModel aiAssistant)
     {
         _engineManager = engineManager;
@@ -47,6 +51,8 @@ public partial class MainWindowViewModel : ObservableObject
         _training = training;
         _historyMatching = historyMatching;
         _forecast = forecast;
+        _reservoirView3D = reservoirView3D;
+        _crossSection = crossSection;
         AIAssistant = aiAssistant;
 
         // Default view
@@ -75,6 +81,12 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void NavigateToForecast()         => CurrentView = _forecast;
+
+    [RelayCommand]
+    private void NavigateTo3DViewer()         => CurrentView = _reservoirView3D;
+
+    [RelayCommand]
+    private void NavigateToCrossSection()     => CurrentView = _crossSection;
 
     // ── AI panel toggle ───────────────────────────────────────────────────────
 

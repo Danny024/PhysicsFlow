@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-PFPROJ_VERSION = "1.1.0"
+PFPROJ_VERSION = "1.2.0"
 PFPROJ_EXTENSION = ".pfproj"
 
 
@@ -157,8 +157,18 @@ class PhysicsFlowProject:
 
     # ── Serialisation ──────────────────────────────────────────────────────
 
-    def save(self, path) -> Path:
-        """Save project to .pfproj file."""
+    def save(self, path, password: Optional[str] = None) -> Path:
+        """
+        Save project to .pfproj file.
+
+        Parameters
+        ----------
+        path     : destination path (extension forced to .pfproj)
+        password : if provided, the saved file is additionally encrypted to
+                   <path>.enc using AES-256-GCM (requires `cryptography` package)
+
+        Returns the path of the written file (.pfproj or .pfproj.enc).
+        """
         path = Path(path)
         if path.suffix.lower() != PFPROJ_EXTENSION:
             path = path.with_suffix(PFPROJ_EXTENSION)
@@ -183,16 +193,42 @@ class PhysicsFlowProject:
         }
 
         path.write_text(json.dumps(data, indent=2, default=str), encoding='utf-8')
+
+        if password is not None:
+            from .crypto import encrypt_pfproj
+            enc_path = encrypt_pfproj(path, password=password, remove_original=True)
+            return enc_path
+
         return path
 
     @classmethod
-    def load(cls, path) -> "PhysicsFlowProject":
-        """Load a project from a .pfproj file."""
+    def load(cls, path, password: Optional[str] = None) -> "PhysicsFlowProject":
+        """
+        Load a project from a .pfproj (or .pfproj.enc) file.
+
+        Parameters
+        ----------
+        path     : path to the .pfproj or .pfproj.enc file
+        password : required if the file is AES-256-GCM encrypted (.pfproj.enc)
+        """
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Project file not found: {path}")
 
-        data = json.loads(path.read_text(encoding='utf-8'))
+        # Handle encrypted files
+        if str(path).endswith('.pfproj.enc') or path.suffix == '.enc':
+            if password is None:
+                raise ValueError(
+                    "This project file is encrypted. Provide `password` to decrypt it."
+                )
+            from .crypto import decrypt_pfproj
+            import tempfile, os
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_plain = Path(tmpdir) / "project.pfproj"
+                decrypt_pfproj(path, password=password, output_path=tmp_plain)
+                data = json.loads(tmp_plain.read_text(encoding='utf-8'))
+        else:
+            data = json.loads(path.read_text(encoding='utf-8'))
 
         model_paths = ModelPaths(**data.get('model_paths', {}))
         hm_raw = data.get('hm_results', {})

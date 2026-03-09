@@ -5,6 +5,81 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Released] — v1.2.0
+
+### Build: 2026-03-09
+
+### Added — Python Engine
+
+- `physicsflow/training/pretrain_norne.py` — PINO pre-training CLI and library
+  - `PretrainConfig` dataclass with full hyperparameter control
+  - `pretrain_norne(cfg)` function: generates synthetic Norne ensemble, trains FNO3d with PINOLoss
+  - `_build_dataset()`: reads Eclipse deck if available, falls back to synthetic lognormal K/phi fields
+  - `_synthetic_simulation()`: fast analytical Buckley-Leverett proxy for target field generation
+  - `physicsflow-pretrain` CLI entry point (Click)
+  - Integrates with `DatabaseService`: logs every epoch, registers best checkpoint in `model_versions`
+- `physicsflow/io/crypto.py` — AES-256-GCM project file encryption
+  - `encrypt_pfproj(path, password)` → `.pfproj.enc` (PBKDF2-HMAC-SHA256, 600k iterations, random salt)
+  - `decrypt_pfproj(path, password)` → `.pfproj`
+  - `is_encrypted(path)` → bool
+  - PFEC binary format: magic + version + iterations + salt + nonce + tag + ciphertext
+  - Secure deletion (`_secure_delete`) overwrites file with zeros before `unlink`
+- `physicsflow/cli/encrypt_cmd.py` — CLI commands for encryption
+  - `physicsflow-encrypt` — encrypt a project file (prompts password if not given)
+  - `physicsflow-decrypt` — decrypt a `.pfproj.enc` file
+- `physicsflow/io/project.py` — Updated for v1.2.0
+  - `PhysicsFlowProject.save(path, password=None)` — optional AES-256-GCM encryption on save
+  - `PhysicsFlowProject.load(path, password=None)` — transparent decryption of `.pfproj.enc` files
+  - `PFPROJ_VERSION` bumped to `1.2.0`
+- `pyproject.toml` — new dependencies: `sqlalchemy`, `alembic`, `cryptography`; three new CLI entry points
+
+### Added — .NET Desktop
+
+- `PhysicsFlow.Infrastructure/Reports/IReportService.cs` + `ReportService.cs`
+  - QuestPDF-based PDF generation (Community licence)
+  - `GenerateHMSummaryReportAsync`: project summary card, convergence table, per-well RMSE
+  - `GenerateEURReportAsync`: EUR P10/P50/P90 table, per-well EUR, disclaimer block
+  - Header/footer with page numbers and timestamp
+- `PhysicsFlow.Infrastructure/Export/IExcelExportService.cs` + `ExcelExportService.cs`
+  - ClosedXML-based Excel export
+  - `ExportWellDataAsync`: Summary sheet + one sheet per well (obs/sim rates, all columns)
+  - `ExportEnsembleStatisticsAsync`: EUR summary + per-well monthly P50 rates sheet
+  - `ExportTrainingHistoryAsync`: epoch-by-epoch loss table with number formatting
+- `Views/Visualisation/ReservoirView3D.xaml` + `ReservoirView3DViewModel.cs`
+  - HelixToolkit.Wpf 3D reservoir viewer
+  - Voxel-box rendering coloured by Jet colourmap for P / Sw / K
+  - Animated timestep playback with Play/Pause commands and CancellationToken
+  - Well trajectory overlay (5 representative Norne wells, yellow tubes)
+  - Property selector, timestep slider, opacity slider, VTK export stub
+- `Views/Visualisation/CrossSectionView.xaml` + `CrossSectionViewModel.cs`
+  - I / J / K plane 2D bitmap slices using `WriteableBitmap`
+  - Colourmaps: Jet, Viridis, Seismic, Greys
+  - TabControl with three slice planes, well overlay Canvas
+  - Slice index slider, property selector, colourmap selector
+- `App.xaml.cs` — registers `IReportService`, `IExcelExportService`, `ReservoirView3DViewModel`, `CrossSectionViewModel` in DI
+- `MainWindowViewModel.cs` — adds `NavigateTo3DViewer` and `NavigateToCrossSection` relay commands; injects both new ViewModels
+- `MainWindow.xaml` — adds `Visualisation` namespace, `DataTemplate` entries for both new ViewModels; version updated to v1.2.0
+- `ForecastViewModel.cs` — `ExportExcel` and `ExportPdf` commands wired to real services; `BuildEurReportData()` helper
+- `PhysicsFlow.App.csproj` — `HelixToolkit.Wpf` already present from v1.1.0
+
+### Added — DevOps / CI-CD
+
+- `.github/workflows/ci.yml` — full GitHub Actions CI pipeline
+  - `python-engine` job: Python 3.11 + 3.12 matrix, CPU torch, JAX CPU, generates gRPC stubs with `grpc_tools.protoc`, runs pytest (excludes gpu/jax/slow markers), uploads junit + coverage XML
+  - `dotnet-desktop` job: Windows runner, `dotnet restore` triggers `Grpc.Tools` auto-codegen, `dotnet build` Release, `dotnet test`
+  - `lint` job: ruff linter + formatter check
+  - `security` job: bandit + pip-audit
+- `.github/workflows/release.yml` — release automation on version tags (`v*.*.*`)
+  - `build-installer` job: WiX v4 MSI + bootstrapper EXE, creates GitHub Release with assets
+  - `publish-python` job: builds wheel, uploads to PyPI (requires `PYPI_TOKEN` secret)
+
+### Changed
+
+- `MainWindow.xaml` — version label updated from `v1.0.0-dev` to `v1.2.0`
+- `pyproject.toml` — version bumped from `1.0.0-dev` to `1.2.0`
+
+---
+
 ## [Unreleased] — v1.0.0-dev
 
 ### Build: 2025-03-09

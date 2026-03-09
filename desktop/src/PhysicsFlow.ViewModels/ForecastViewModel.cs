@@ -1,13 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using OxyPlot;
 using OxyPlot.Axes;
 using OxyPlot.Series;
+using PhysicsFlow.Infrastructure.Data;
+using PhysicsFlow.Infrastructure.Export;
+using PhysicsFlow.Infrastructure.Reports;
 
 namespace PhysicsFlow.ViewModels;
 
@@ -50,10 +55,23 @@ public partial class ForecastViewModel : ObservableObject
     // Forecast data storage
     private ForecastData? _forecastData;
 
+    // Services (optional — null when used without DI e.g. design-time)
+    private readonly IReportService?      _reportService;
+    private readonly IExcelExportService? _excelService;
+    private readonly AppDbService?        _dbService;
+
     // ── Constructor ──────────────────────────────────────────────────────
 
-    public ForecastViewModel()
+    public ForecastViewModel() : this(null, null, null) { }
+
+    public ForecastViewModel(
+        IReportService?      reportService,
+        IExcelExportService? excelService,
+        AppDbService?        dbService)
     {
+        _reportService = reportService;
+        _excelService  = excelService;
+        _dbService     = dbService;
         SelectedQuantity = QuantityOptions.First();
         SelectedHorizon  = 20;
         InitialisePlots();
@@ -87,23 +105,80 @@ public partial class ForecastViewModel : ObservableObject
     [RelayCommand]
     private async Task ExportExcel()
     {
+        if (_excelService is null || _forecastData is null) return;
         IsCalculating = true;
         StatusMessage = "Exporting to Excel...";
-        await Task.Delay(500);
-        // TODO: ClosedXML export
-        StatusMessage = "Excel exported";
-        IsCalculating = false;
+        try
+        {
+            var outputDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "PhysicsFlow", "exports");
+            Directory.CreateDirectory(outputDir);
+            var path = Path.Combine(outputDir,
+                $"PhysicsFlow_Forecast_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
+
+            var eurData = BuildEurReportData();
+            var outPath = await _excelService.ExportEnsembleStatisticsAsync(
+                eurData, "PhysicsFlow Project", path);
+            StatusMessage = $"Excel exported → {outPath}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Export failed: {ex.Message}";
+        }
+        finally { IsCalculating = false; }
     }
 
     [RelayCommand]
     private async Task ExportPdf()
     {
+        if (_reportService is null || _forecastData is null) return;
         IsCalculating = true;
-        StatusMessage = "Exporting to PDF...";
-        await Task.Delay(500);
-        // TODO: QuestPDF export
-        StatusMessage = "PDF exported";
-        IsCalculating = false;
+        StatusMessage = "Generating PDF report...";
+        try
+        {
+            var outputDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "PhysicsFlow", "reports");
+            Directory.CreateDirectory(outputDir);
+            var path = Path.Combine(outputDir,
+                $"PhysicsFlow_EUR_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+
+            // Build a stub ProjectEntity for the report header
+            var project = new PhysicsFlow.Infrastructure.Data.Entities.ProjectEntity
+            {
+                Name = "PhysicsFlow Project",
+                Nx = 46, Ny = 112, Nz = 22,
+                NWells = 35,
+            };
+            var eurData = BuildEurReportData();
+            var outPath = await _reportService.GenerateEURReportAsync(project, eurData, path);
+            StatusMessage = $"PDF exported → {outPath}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"PDF export failed: {ex.Message}";
+        }
+        finally { IsCalculating = false; }
+    }
+
+    private EURReportData BuildEurReportData()
+    {
+        var wells = WellNames.Where(w => w != "FIELD").ToArray();
+        var wellRates = wells.ToDictionary(
+            w => w,
+            _ => _forecastData!.OilP50);
+        return new EURReportData(
+            EurOilP10: EurOilP50 * 1.3,
+            EurOilP50: EurOilP50,
+            EurOilP90: EurOilP50 * 0.7,
+            EurGasP50: EurGasP50,
+            RecoveryFactorP50: RecoveryFactorP50,
+            PeakOilRateP50: PeakOilRateP50,
+            ForecastHorizonYears: ForecastHorizonYears,
+            WellEurP50: wellRates,
+            WellNames: wells
+        );
     }
 
     // ── Property changed reactions ────────────────────────────────────────

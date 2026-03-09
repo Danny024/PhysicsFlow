@@ -3,7 +3,7 @@
 > Physics-Informed Neural Operator surrogate + Adaptive Ensemble Kalman Inversion +
 > Local LLM Reservoir Assistant — packaged as an industrial-grade desktop application.
 
-**Current version: v1.1.0** — Released 2026-03-09
+**Current version: v1.2.0** — Released 2026-03-09
 
 ---
 
@@ -777,15 +777,15 @@ pytest tests/ -m "not slow" -v
 - [x] Shared SQLite DB path (%APPDATA%\PhysicsFlow\physicsflow.db) — zero-config cross-process access
 - [x] Private GitHub repository: https://github.com/Danny024/PhysicsFlow
 
-### v1.2.0 — Visualisation & Reports (Next)
+### v1.2.0 — Visualisation & Reports ✅ Complete (this release)
 
-- [ ] Helix Toolkit 3D reservoir viewer (P, Sw, K animated)
-- [ ] 2D cross-section viewer (I/J/K planes)
-- [ ] QuestPDF report generation (HM summary, EUR report)
-- [ ] ClosedXML Excel export (well data, ensemble statistics)
-- [ ] Real gRPC stub generation in CI/CD pipeline
-- [ ] PINO pre-training on Norne reference dataset
-- [ ] AES-256 project file encryption
+- [x] Helix Toolkit 3D reservoir viewer (P, Sw, K animated) — `ReservoirView3D.xaml` + `ReservoirView3DViewModel.cs`
+- [x] 2D cross-section viewer (I/J/K planes) — `CrossSectionView.xaml` + `CrossSectionViewModel.cs` (WriteableBitmap, 4 colourmaps)
+- [x] QuestPDF report generation (HM summary, EUR report) — `ReportService.cs` (Community licence)
+- [x] ClosedXML Excel export (well data, ensemble statistics, training history) — `ExcelExportService.cs`
+- [x] Real gRPC stub generation in CI/CD pipeline — `.github/workflows/ci.yml` (python-engine + dotnet-desktop + lint + security jobs)
+- [x] PINO pre-training on Norne reference dataset — `training/pretrain_norne.py` (`physicsflow-pretrain` CLI)
+- [x] AES-256-GCM project file encryption — `io/crypto.py` + `cli/encrypt_cmd.py` (PBKDF2-HMAC-SHA256, 600k iterations)
 
 ### v2.0 — Cloud & API
 
