@@ -326,7 +326,6 @@ class ModelRepo:
                    ModelVersion.is_active == True)
            .update({"is_active": False}))
 
-        import os, hashlib
         sha = None
         size = None
         try:

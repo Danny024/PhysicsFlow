@@ -189,7 +189,7 @@ def pretrain_norne(cfg: PretrainConfig) -> Path:
 
     Returns the path to the best saved checkpoint.
     """
-    from ..surrogate.fno import FNO3d, FNOConfig, PINOLoss
+    from ..surrogate.fno import FNO3d, FNOConfig, PINOLoss, PINOLossConfig
     from ..db.db_service import DatabaseService
 
     torch.manual_seed(cfg.seed)
@@ -207,9 +207,9 @@ def pretrain_norne(cfg: PretrainConfig) -> Path:
              project_id=project_id)
 
     fno_cfg = FNOConfig(
-        modes1=cfg.modes1, modes2=cfg.modes2, modes3=cfg.modes3,
-        width=cfg.width, n_layers=cfg.n_layers,
-        n_input_channels=6, n_output_channels=2, n_timesteps=cfg.n_timesteps,
+        n_modes_x=cfg.modes1, n_modes_y=cfg.modes2, n_modes_z=cfg.modes3,
+        d_model=cfg.width, n_layers=cfg.n_layers,
+        in_channels=6, out_channels=2, n_timesteps=cfg.n_timesteps,
     )
     model = FNO3d(fno_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
@@ -222,8 +222,10 @@ def pretrain_norne(cfg: PretrainConfig) -> Path:
                                   lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=cfg.lr_decay_every, gamma=cfg.lr_decay_factor)
-    criterion = PINOLoss(w_data=cfg.w_data, w_pde=cfg.w_pde,
-                         w_ic=cfg.w_ic, w_bc=cfg.w_bc, w_well=cfg.w_well)
+    criterion = PINOLoss(PINOLossConfig(
+        w_data=cfg.w_data, w_pde=cfg.w_pde,
+        w_ic=cfg.w_ic, w_bc=cfg.w_bc, w_well=cfg.w_well,
+    ))
 
     out_dir = Path(cfg.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -243,11 +245,15 @@ def pretrain_norne(cfg: PretrainConfig) -> Path:
             targets = targets.to(device)
             optimizer.zero_grad()
             preds = model(inputs)
-            loss, loss_pde, loss_data = criterion(preds, targets, inputs)
+            perm_log = inputs[:, 0]   # K_log channel
+            phi_inp  = inputs[:, 1]   # phi channel
+            loss, breakdown = criterion(preds, targets, perm_log, phi_inp)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            ep_loss += loss.item(); ep_pde += loss_pde.item(); ep_data += loss_data.item()
+            ep_loss += loss.item()
+            ep_pde  += breakdown['pde']
+            ep_data += breakdown['data']
 
         scheduler.step()
         nb  = len(loader)
@@ -274,6 +280,7 @@ def pretrain_norne(cfg: PretrainConfig) -> Path:
     db.complete_run(run_id, loss_total=best_loss)
     db.register_model(project_id=project_id, model_type="pino",
                       version_tag="norne_pretrained", file_path=str(best_path),
+                      training_run_id=run_id,
                       epochs_trained=cfg.epochs, loss_total=best_loss,
                       notes=f"Pre-trained on Norne synthetic ensemble N={cfg.ensemble_size}")
     db.audit("pretrain.completed",

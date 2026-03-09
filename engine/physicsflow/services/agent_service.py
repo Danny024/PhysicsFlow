@@ -44,8 +44,7 @@ class AgentServicer:
             from ..agent.reservoir_agent import ReservoirAgent
             self._agent = ReservoirAgent(
                 model=self.cfg.default_llm_model,
-                ollama_host=self.cfg.ollama_host,
-                context=self.ctx,
+                context_provider=self.ctx,
             )
         return self._agent
 
