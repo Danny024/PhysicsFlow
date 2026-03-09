@@ -1,0 +1,113 @@
+syntax = "proto3";
+package physicsflow;
+
+option csharp_namespace = "PhysicsFlow.Infrastructure.Proto";
+
+service HistoryMatchingService {
+  // Run full αREKI history matching workflow
+  rpc RunHistoryMatch (HistoryMatchRequest) returns (stream HMProgress);
+  // Get current ensemble statistics
+  rpc GetEnsembleStats (EnsembleStatsRequest) returns (EnsembleStatsResponse);
+  // Get per-well data mismatch breakdown
+  rpc GetDataMismatch (DataMismatchRequest) returns (DataMismatchResponse);
+  // Get updated parameter fields (P10/P50/P90)
+  rpc GetParameterEnsemble (ParameterRequest) returns (ParameterResponse);
+  // Stop running history match
+  rpc StopHistoryMatch (StopRequest) returns (StopResponse);
+}
+
+message ObservedData {
+  string well_name = 1;
+  repeated float wopr_obs = 2;   // observed oil rate, STB/day
+  repeated float wwpr_obs = 3;
+  repeated float wgpr_obs = 4;
+  repeated float wopr_err = 5;   // measurement error std dev
+  repeated float wwpr_err = 6;
+  repeated float wgpr_err = 7;
+  repeated float time_days = 8;
+}
+
+message HistoryMatchRequest {
+  string project_path = 1;
+  string model_path = 2;           // trained PINO model
+  repeated ObservedData observations = 3;
+  int32 n_ensemble = 4;            // ensemble size (default 200)
+  int32 max_iterations = 5;        // αREKI max iterations
+  float alpha_init = 6;            // initial regularisation α
+  float localisation_radius = 7;   // Gaspari-Cohn radius (grid cells)
+  bool use_vcae = 8;               // use VCAE generative prior for K
+  bool use_ddim = 9;               // use DDIM decoder
+  bool use_ccr = 10;               // use CCR well model
+  int32 ccr_n_clusters = 11;       // CCR number of clusters (0=auto BIC)
+  string prior_type = 12;          // "gaussian" or "vcae_ddim"
+  int64 random_seed = 13;
+}
+
+message HMProgress {
+  int32 iteration = 1;
+  int32 max_iterations = 2;
+  float data_mismatch = 3;         // overall RMSE
+  float ensemble_spread = 4;       // std dev of ensemble
+  float alpha = 5;                 // current regularisation α
+  float s_cumulative = 6;          // cumulative s (stops at 1.0)
+  float elapsed_sec = 7;
+  float eta_sec = 8;
+  string status = 9;               // "running", "converged", "stopped"
+  // Per-well mismatch snapshot
+  repeated WellMismatch well_mismatches = 10;
+  // Ensemble fan chart data (P10/P50/P90 for first producer's WOPR)
+  repeated float p10_wopr = 11;
+  repeated float p50_wopr = 12;
+  repeated float p90_wopr = 13;
+  repeated float time_days = 14;
+}
+
+message WellMismatch {
+  string well_name = 1;
+  float wopr_rmse = 2;
+  float wwpr_rmse = 3;
+  float wgpr_rmse = 4;
+}
+
+message EnsembleStatsRequest { string session_id = 1; }
+
+message EnsembleStatsResponse {
+  int32 n_ensemble = 1;
+  float perm_p10 = 2;   // log10(mD)
+  float perm_p50 = 3;
+  float perm_p90 = 4;
+  float poro_p10 = 5;
+  float poro_p50 = 6;
+  float poro_p90 = 7;
+  float data_mismatch_final = 8;
+  int32 iterations_run = 9;
+  bool converged = 10;
+}
+
+message DataMismatchRequest { string session_id = 1; }
+
+message DataMismatchResponse {
+  repeated WellMismatch per_well = 1;
+  float overall_rmse = 2;
+  float improvement_pct = 3;   // % improvement from iteration 1 to final
+}
+
+message ParameterRequest {
+  string session_id = 1;
+  string parameter = 2;   // "perm", "poro", "ntg", "faultmult"
+  string quantile = 3;    // "p10", "p50", "p90"
+}
+
+message ParameterResponse {
+  string parameter = 1;
+  string quantile = 2;
+  int32 nx = 3;
+  int32 ny = 4;
+  int32 nz = 5;
+  bytes data = 6;    // float32 field
+  float min_val = 7;
+  float max_val = 8;
+}
+
+message StopRequest { string session_id = 1; }
+message StopResponse { bool stopped = 1; int32 iterations_completed = 2; }

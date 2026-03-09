@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "physicsflow-engine"
+version = "1.0.0-dev"
+description = "Physics-Informed Neural Operator Reservoir Simulation Engine"
+authors = [{ name = "PhysicsFlow", email = "dev@physicsflow.ai" }]
+requires-python = ">=3.11"
+license = { text = "Commercial" }
+
+dependencies = [
+    # Deep learning — PyTorch stack (training)
+    "torch>=2.4.0",
+    "torchvision>=0.19.0",
+    # JAX stack (ensemble Kalman operations)
+    "jax[cuda12]>=0.4.28",
+    "jaxlib>=0.4.28",
+    "blackjax>=1.2.0",
+    "equinox>=0.11.0",
+    "optax>=0.2.0",
+    # gRPC
+    "grpcio>=1.64.0",
+    "grpcio-tools>=1.64.0",
+    "grpcio-reflection>=1.64.0",
+    "protobuf>=5.27.0",
+    # ML / scientific
+    "numpy>=1.26.0",
+    "scipy>=1.13.0",
+    "scikit-learn>=1.5.0",
+    "xgboost>=2.1.0",
+    # LLM agent
+    "ollama>=0.2.0",
+    # Reservoir I/O
+    "resfo>=4.2.0",
+    "lasio>=0.31",
+    # Utilities
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "loguru>=0.7.0",
+    "tqdm>=4.66.0",
+    "rich>=13.7.0",
+    "click>=8.1.0",
+    "h5py>=3.11.0",
+    "pyarrow>=16.0.0",
+    "matplotlib>=3.9.0",
+    "vtk>=9.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+    "black>=24.4.0",
+    "pre-commit>=3.7.0",
+]
+
+[project.scripts]
+physicsflow-engine = "physicsflow.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["physicsflow*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhysicsFlow.Core\PhysicsFlow.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- gRPC -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.63.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.27.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.63.0" PrivateAssets="All" />
+    <!-- Logging -->
+    <PackageReference Include="Serilog" Version="4.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <!-- Reports -->
+    <PackageReference Include="QuestPDF" Version="2024.6.0" />
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <!-- JSON -->
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+    <!-- Database -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Auto-compile .proto files -->
+  <ItemGroup>
+    <Protobuf Include="Proto\*.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+</Project>

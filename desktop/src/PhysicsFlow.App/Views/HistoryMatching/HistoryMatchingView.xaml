@@ -1,0 +1,201 @@
+<UserControl x:Class="PhysicsFlow.App.Views.HistoryMatching.HistoryMatchingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+             xmlns:oxy="http://oxyplot.org/wpf">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="History Matching — αREKI" FontSize="26" FontWeight="Light"/>
+                <TextBlock Text="Adaptive Regularised Ensemble Kalman Inversion with JAX-accelerated ensemble operations."
+                           FontSize="13" Foreground="{DynamicResource MahApps.Brushes.Gray5}"
+                           Margin="0,4,0,0"/>
+            </StackPanel>
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button Content="▶  Run History Match" Margin="0,0,8,0"
+                        Command="{Binding StartHMCommand}"
+                        IsEnabled="{Binding CanStart}"
+                        Style="{StaticResource AccentButtonStyle}" Width="160" Height="36"/>
+                <Button Content="⏹  Stop" Margin="0,0,8,0"
+                        Command="{Binding StopHMCommand}"
+                        IsEnabled="{Binding IsRunning}"
+                        Style="{StaticResource DangerButtonStyle}" Width="80" Height="36"/>
+                <Button Content="📊  Export Results"
+                        Command="{Binding ExportResultsCommand}"
+                        IsEnabled="{Binding HasResults}" Width="140" Height="36"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Config + Status row -->
+        <Grid Grid.Row="1" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- αREKI configuration -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,16,0">
+                <StackPanel>
+                    <TextBlock Text="αREKI Configuration" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                    <TextBlock Text="Ensemble Size" FontSize="11" Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                    <mah:NumericUpDown Value="{Binding EnsembleSize}" Minimum="10" Maximum="2000"
+                                       Interval="10" Margin="0,2,0,10"/>
+
+                    <TextBlock Text="Max Iterations" FontSize="11" Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                    <mah:NumericUpDown Value="{Binding MaxIterations}" Minimum="1" Maximum="100"
+                                       Interval="1" Margin="0,2,0,10"/>
+
+                    <TextBlock Text="Localisation Radius (cells)" FontSize="11"
+                               Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                    <Slider Value="{Binding LocalisationRadius}" Minimum="2" Maximum="40"
+                            TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,4"/>
+                    <TextBlock Text="{Binding LocalisationRadius, StringFormat={}{0:F0} cells}"
+                               FontSize="10" HorizontalAlignment="Right"/>
+
+                    <Separator Margin="0,8"/>
+                    <CheckBox Content="Use VCAE + DDIM priors" IsChecked="{Binding UseGenerativePriors}"
+                              Margin="0,0,0,6"/>
+                    <CheckBox Content="Use CCR well model" IsChecked="{Binding UseCCR}"
+                              Margin="0,0,0,6"/>
+                    <CheckBox Content="Auto-tune localisation" IsChecked="{Binding AutoLocalisation}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Live iteration status -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Convergence stats -->
+                <UniformGrid Grid.Row="0" Columns="4" Margin="0,0,0,12">
+                    <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Iteration" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                            <TextBlock Text="{Binding CurrentIteration}" FontSize="28" FontWeight="Bold"
+                                       Foreground="{DynamicResource MahApps.Brushes.Accent}"/>
+                            <TextBlock Text="{Binding MaxIterations, StringFormat=of {0}}" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Data Mismatch" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                            <TextBlock Text="{Binding DataMismatch, StringFormat={}{0:F4}}"
+                                       FontSize="28" FontWeight="Bold"/>
+                            <TextBlock Text="RMSE" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="α (Regularisation)" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                            <TextBlock Text="{Binding Alpha, StringFormat={}{0:F3}}"
+                                       FontSize="28" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding SCumulative, StringFormat=s = {0:F3}}"
+                                       FontSize="10" Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource StatCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Improvement" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                            <TextBlock Text="{Binding ImprovementPct, StringFormat={}{0:F1}%}"
+                                       FontSize="28" FontWeight="Bold" Foreground="#2ECC71"/>
+                            <TextBlock Text="mismatch reduction" FontSize="10"
+                                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                        </StackPanel>
+                    </Border>
+                </UniformGrid>
+
+                <!-- Per-well mismatch heatmap-style list -->
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Per-Well Mismatch" FontSize="14"
+                                   FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <ItemsControl Grid.Row="1" ItemsSource="{Binding WellMismatches}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{Binding MismatchColor}"
+                                            CornerRadius="4" Padding="6,4" Margin="3">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding WellName}" FontSize="10"
+                                                       Foreground="White" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding Rmse, StringFormat={}{0:F3}}"
+                                                       FontSize="10" Foreground="White"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Charts row: convergence + P10/P50/P90 fan -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,8,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Convergence — Data Mismatch vs Iteration"
+                               FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                    <oxy:PlotView Grid.Row="1" Model="{Binding ConvergencePlotModel}" MinHeight="280"/>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="8,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Ensemble Fan Chart — P10/P50/P90"
+                               FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <!-- Well selector for fan chart -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Well:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox ItemsSource="{Binding ProducerNames}"
+                                  SelectedItem="{Binding SelectedFanWell}" Width="100"/>
+                        <TextBlock Text="  Quantity:" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                        <ComboBox ItemsSource="{Binding Quantities}"
+                                  SelectedItem="{Binding SelectedQuantity}" Width="80"/>
+                    </StackPanel>
+                    <oxy:PlotView Grid.Row="2" Model="{Binding FanChartModel}" MinHeight="240"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

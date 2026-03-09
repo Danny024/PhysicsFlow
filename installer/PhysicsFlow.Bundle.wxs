@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PhysicsFlow Bootstrapper Bundle
+  =================================
+  Chains together prerequisites and the main MSI:
+    1. .NET 8 Desktop Runtime (if not present)
+    2. Visual C++ Redistributable 2022 x64
+    3. PhysicsFlow-Setup-1.1.0-x64.msi
+
+  Build:
+    wix build PhysicsFlow.Bundle.wxs -o PhysicsFlow-Installer-1.1.0-x64.exe
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+
+  <Bundle
+    Name="PhysicsFlow 1.1.0"
+    Version="1.1.0.0"
+    Manufacturer="PhysicsFlow Technologies"
+    UpgradeCode="A8B4C3D2-E5F6-4A7B-8C8D-9E1F2A3B4C5E"
+    AboutUrl="https://physicsflow.io"
+    Copyright="Copyright © 2024-2025 PhysicsFlow Technologies">
+
+    <bal:WixStandardBootstrapperApplication
+      LicenseFile="License.rtf"
+      Theme="hyperlinkLicense"
+      LogoFile="logo.png"/>
+
+    <Chain>
+      <!-- .NET 8 Desktop Runtime -->
+      <PackageGroupRef Id="NetFx80Redist"/>
+
+      <!-- Visual C++ Redistributable 2022 x64 -->
+      <ExePackage
+        Id="VcRedist2022"
+        Name="Visual C++ 2022 Redistributable (x64)"
+        SourceFile="redist\VC_redist.x64.exe"
+        DetectCondition="HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64 &amp; Major >= 14"
+        InstallCommand="/install /quiet /norestart"
+        RepairCommand="/repair /quiet /norestart"
+        UninstallCommand="/uninstall /quiet /norestart"
+        Vital="yes"
+        Permanent="yes"/>
+
+      <!-- Main MSI -->
+      <MsiPackage
+        Id="PhysicsFlowMsi"
+        SourceFile="PhysicsFlow-Setup-1.1.0-x64.msi"
+        Vital="yes"
+        DisplayInternalUI="no"/>
+    </Chain>
+
+  </Bundle>
+</Wix>

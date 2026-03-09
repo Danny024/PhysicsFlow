@@ -1,0 +1,197 @@
+syntax = "proto3";
+package physicsflow;
+
+option csharp_namespace = "PhysicsFlow.Infrastructure.Proto";
+
+// ─── Simulation Service ───────────────────────────────────────────────────────
+
+service SimulationService {
+  // Run single forward simulation (PINO surrogate)
+  rpc RunForward (ForwardRequest) returns (stream ForwardProgress);
+  // Get 3D field snapshot at a given time step
+  rpc GetFieldSnapshot (SnapshotRequest) returns (FieldSnapshot);
+  // Get all well production time series
+  rpc GetWellTimeSeries (WellTimeSeriesRequest) returns (WellTimeSeriesResponse);
+  // Validate inputs before running
+  rpc ValidateInputs (ForwardRequest) returns (ValidationResult);
+}
+
+service TrainingService {
+  // Train PINO surrogate (PyTorch)
+  rpc TrainSurrogate (TrainingRequest) returns (stream TrainingProgress);
+  // Load pre-trained model
+  rpc LoadModel (LoadModelRequest) returns (LoadModelResponse);
+  // Save current model
+  rpc SaveModel (SaveModelRequest) returns (SaveModelResponse);
+  // Evaluate surrogate accuracy on held-out set
+  rpc EvaluateSurrogate (EvaluateRequest) returns (EvaluateResponse);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message GridSpec {
+  int32 nx = 1;
+  int32 ny = 2;
+  int32 nz = 3;
+  float dx = 4;   // ft
+  float dy = 5;   // ft
+  float dz = 6;   // ft
+  repeated float actnum = 7;  // 1=active, 0=inactive, nx*ny*nz values
+}
+
+message WellSpec {
+  string name = 1;
+  WellType type = 2;
+  int32 i = 3;   // grid index (1-based)
+  int32 j = 4;
+  repeated int32 k_perforations = 5;  // active perforation layers
+  float rwell = 6;   // wellbore radius, ft
+  float skin = 7;
+  float pwf = 8;    // BHP constraint, psia (producers)
+  float rate = 9;   // rate constraint, STB/day (injectors)
+}
+
+enum WellType {
+  PRODUCER = 0;
+  WATER_INJECTOR = 1;
+  GAS_INJECTOR = 2;
+}
+
+message PvtSpec {
+  float p_bub = 1;    // bubble point pressure, psia
+  float p_atm = 2;    // atmospheric pressure, psia
+  float cfo = 3;      // oil compressibility, 1/psia
+  float p_ini = 4;    // initial reservoir pressure, psia
+  float muw = 5;      // water viscosity, cP
+  float muo = 6;      // oil viscosity at reference, cP
+}
+
+message RelPermSpec {
+  string model = 1;   // "stone2" or "corey"
+  float swi = 2;      // connate water saturation
+  float sor = 3;      // residual oil saturation
+  float krwmax = 4;
+  float kromax = 5;
+  float krgmax = 6;
+  float n_w = 7;      // Corey exponent water
+  float n_o = 8;      // Corey exponent oil
+  float n_g = 9;      // Corey exponent gas
+}
+
+message ForwardRequest {
+  GridSpec grid = 1;
+  repeated WellSpec wells = 2;
+  PvtSpec pvt = 3;
+  RelPermSpec relperm = 4;
+  bytes permeability = 5;   // float32 array, Nx*Ny*Nz, log10(mD)
+  bytes porosity = 6;       // float32 array
+  bytes ntg = 7;            // float32 array, net-to-gross
+  bytes fault_mult = 8;     // float32 array, 53 fault multipliers
+  int32 n_timesteps = 9;
+  float dt = 10;            // time step size, days
+  string mode = 11;         // "pino" or "fno"
+}
+
+message ForwardProgress {
+  int32 timestep = 1;
+  int32 total_timesteps = 2;
+  float elapsed_sec = 3;
+  float eta_sec = 4;
+  string status = 5;
+  // Final results (only populated on last message)
+  bytes pressure_field = 6;    // float32, Nx*Ny*Nz*Nt
+  bytes sw_field = 7;
+  bytes sg_field = 8;
+  repeated WellResult well_results = 9;
+}
+
+message WellResult {
+  string name = 1;
+  repeated float wopr = 2;  // oil production rate, STB/day, per timestep
+  repeated float wwpr = 3;  // water production rate
+  repeated float wgpr = 4;  // gas production rate, Mscf/day
+  repeated float wbhp = 5;  // BHP, psia
+}
+
+message SnapshotRequest {
+  int32 timestep = 1;
+  string property = 2;  // "pressure", "sw", "sg", "so", "perm", "poro"
+}
+
+message FieldSnapshot {
+  string property = 1;
+  int32 timestep = 2;
+  int32 nx = 3;
+  int32 ny = 4;
+  int32 nz = 5;
+  bytes data = 6;      // float32, Nx*Ny*Nz
+  float min_val = 7;
+  float max_val = 8;
+  string unit = 9;
+}
+
+message WellTimeSeriesRequest {
+  string well_name = 1;   // empty = all wells
+}
+
+message WellTimeSeriesResponse {
+  repeated WellResult wells = 1;
+  repeated float time_days = 2;
+}
+
+message ValidationResult {
+  bool valid = 1;
+  repeated string errors = 2;
+  repeated string warnings = 3;
+}
+
+message TrainingRequest {
+  string project_path = 1;
+  int32 n_training_samples = 2;
+  int32 n_epochs = 3;
+  float learning_rate = 4;
+  int32 batch_size = 5;
+  string mode = 6;       // "pino" or "fno"
+  string relperm = 7;    // "stone2" or "corey"
+  int32 pde_method = 8;  // 1=approximate, 2=extensive
+  float w_pde = 9;       // PDE loss weight
+  float w_data = 10;     // data loss weight
+  float w_well = 11;     // well loss weight
+  float w_ic = 12;       // initial condition loss weight
+  float w_bc = 13;       // boundary condition loss weight
+  bool use_gpu = 14;
+}
+
+message TrainingProgress {
+  int32 epoch = 1;
+  int32 total_epochs = 2;
+  float pde_loss = 3;
+  float data_loss = 4;
+  float well_loss = 5;
+  float total_loss = 6;
+  float val_loss = 7;
+  float elapsed_sec = 8;
+  float eta_sec = 9;
+  float gpu_util_pct = 10;
+  float gpu_mem_gb = 11;
+}
+
+message LoadModelRequest { string model_path = 1; }
+message LoadModelResponse { bool success = 1; string message = 2; string model_version = 3; }
+message SaveModelRequest { string model_path = 1; }
+message SaveModelResponse { bool success = 1; string saved_path = 2; }
+
+message EvaluateRequest {
+  string model_path = 1;
+  int32 n_test_samples = 2;
+}
+
+message EvaluateResponse {
+  float pressure_rmse = 1;
+  float sw_rmse = 2;
+  float sg_rmse = 3;
+  float wopr_rmse = 4;
+  float wwpr_rmse = 5;
+  float wgpr_rmse = 6;
+  float surrogate_error_pct = 7;  // overall surrogate error %
+}

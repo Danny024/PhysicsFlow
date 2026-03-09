@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PhysicsFlow v1.1.0 WiX v4 Installer
+  =====================================
+  Generates: PhysicsFlow-Setup-1.1.0-x64.msi
+
+  Bundle contents:
+    1. PhysicsFlow .NET 8 desktop application (self-contained, x64)
+    2. Python engine (embedded CPython 3.11)
+    3. .pfproj file association
+    4. Start Menu + Desktop shortcut
+    5. Registry entries (uninstall, file extension)
+
+  Prerequisites (handled by Bootstrapper bundle, separate .exe):
+    - .NET 8 Desktop Runtime (if not self-contained)
+    - Visual C++ Redistributable 2019 x64
+
+  Build:
+    wix build PhysicsFlow.wxs -o PhysicsFlow-Setup-1.1.0-x64.msi
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+    Name="PhysicsFlow"
+    Version="1.1.0.0"
+    Manufacturer="PhysicsFlow Technologies"
+    UpgradeCode="A7B3C2D1-E4F5-4A6B-8C7D-9E0F1A2B3C4D"
+    Language="1033"
+    Codepage="1252"
+    InstallerVersion="500"
+    Compressed="yes"
+    Scope="perMachine">
+
+    <!-- ── Media / Cabinet ─────────────────────────────────────────────── -->
+    <Media Id="1" Cabinet="PhysicsFlow.cab" EmbedCab="yes" CompressionLevel="high"/>
+
+    <!-- ── Upgrade (major upgrade removes previous versions) ──────────── -->
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of PhysicsFlow is already installed."
+      Schedule="afterInstallInitialize"/>
+
+    <!-- ── Directory structure ────────────────────────────────────────── -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="PHYSICSFLOW_DIR" Name="PhysicsFlow">
+        <Directory Id="APP_DIR"    Name="app"/>
+        <Directory Id="ENGINE_DIR" Name="engine"/>
+        <Directory Id="MODELS_DIR" Name="models"/>
+        <Directory Id="LOGS_DIR"   Name="logs"/>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="STARTMENU_DIR" Name="PhysicsFlow"/>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder"/>
+
+    <!-- ── Components ─────────────────────────────────────────────────── -->
+
+    <!-- Main application executable -->
+    <Component Id="MainExecutable" Directory="APP_DIR" Guid="B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E">
+      <File Id="PhysicsFlowExe"
+            Source="$(var.AppPublishDir)\PhysicsFlow.App.exe"
+            KeyPath="yes">
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="STARTMENU_DIR"
+                  Name="PhysicsFlow"
+                  Description="AI-Accelerated Reservoir Simulation Platform"
+                  WorkingDirectory="APP_DIR"
+                  Advertise="no"/>
+        <Shortcut Id="DesktopShortcut"
+                  Directory="DesktopFolder"
+                  Name="PhysicsFlow"
+                  Description="AI-Accelerated Reservoir Simulation Platform"
+                  WorkingDirectory="APP_DIR"
+                  Advertise="no"/>
+      </File>
+    </Component>
+
+    <!-- App runtime files (self-contained .NET 8 publish) -->
+    <Component Id="AppRuntimeFiles" Directory="APP_DIR" Guid="C2D3E4F5-A6B7-4C8D-9E0F-1A2B3C4D5E6F">
+      <File Id="PhysicsFlowDll" Source="$(var.AppPublishDir)\PhysicsFlow.App.dll" KeyPath="yes"/>
+      <File Id="PhysicsFlowRuntimeConfig" Source="$(var.AppPublishDir)\PhysicsFlow.App.runtimeconfig.json"/>
+      <File Id="PhysicsFlowAppSettings" Source="$(var.AppPublishDir)\appsettings.json"/>
+    </Component>
+
+    <!-- Python engine package -->
+    <Component Id="PythonEngine" Directory="ENGINE_DIR" Guid="D3E4F5A6-B7C8-4D9E-0F1A-2B3C4D5E6F7A">
+      <File Id="EngineMain" Source="$(var.EngineDir)\physicsflow\server.py" KeyPath="yes"/>
+      <File Id="EnginePyproject" Source="$(var.EngineDir)\pyproject.toml"/>
+      <!-- Embedded Python interpreter -->
+      <File Id="EmbeddedPython" Source="$(var.EngineDir)\python\python.exe"/>
+    </Component>
+
+    <!-- .pfproj file association -->
+    <Component Id="FileAssociation" Directory="PHYSICSFLOW_DIR"
+               Guid="E4F5A6B7-C8D9-4E0F-1A2B-3C4D5E6F7A8B">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.pfproj"
+                     Type="string"
+                     Value="PhysicsFlowProject"
+                     KeyPath="yes"/>
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\PhysicsFlowProject"
+                     Type="string"
+                     Value="PhysicsFlow Project"/>
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\PhysicsFlowProject\DefaultIcon"
+                     Type="string"
+                     Value="[APP_DIR]PhysicsFlow.App.exe,0"/>
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\PhysicsFlowProject\shell\open\command"
+                     Type="string"
+                     Value="&quot;[APP_DIR]PhysicsFlow.App.exe&quot; &quot;%1&quot;"/>
+    </Component>
+
+    <!-- Uninstall registry entry -->
+    <Component Id="UninstallEntry" Directory="PHYSICSFLOW_DIR"
+               Guid="F5A6B7C8-D9E0-4F1A-2B3C-4D5E6F7A8B9C">
+      <RegistryValue Root="HKLM"
+                     Key="Software\PhysicsFlow Technologies\PhysicsFlow"
+                     Name="InstallDir"
+                     Type="string"
+                     Value="[PHYSICSFLOW_DIR]"
+                     KeyPath="yes"/>
+      <RegistryValue Root="HKLM"
+                     Key="Software\PhysicsFlow Technologies\PhysicsFlow"
+                     Name="Version"
+                     Type="string"
+                     Value="1.1.0"/>
+    </Component>
+
+    <!-- ── Features ───────────────────────────────────────────────────── -->
+    <Feature Id="ProductFeature"
+             Title="PhysicsFlow"
+             Description="Complete PhysicsFlow installation"
+             Level="1"
+             Display="expand"
+             AllowAbsent="no">
+
+      <ComponentRef Id="MainExecutable"/>
+      <ComponentRef Id="AppRuntimeFiles"/>
+      <ComponentRef Id="FileAssociation"/>
+      <ComponentRef Id="UninstallEntry"/>
+
+      <Feature Id="EngineFeature"
+               Title="Python Engine"
+               Description="AI/ML simulation engine (required for core functionality)"
+               Level="1"
+               AllowAbsent="no">
+        <ComponentRef Id="PythonEngine"/>
+      </Feature>
+    </Feature>
+
+    <!-- ── UI ─────────────────────────────────────────────────────────── -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="PHYSICSFLOW_DIR"/>
+
+    <UIRef Id="WixUI_Common"/>
+
+    <!-- Skip license agreement dialog for simpler UX -->
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf"/>
+    <WixVariable Id="WixUIBannerBmp" Value="Banner.bmp"/>
+    <WixVariable Id="WixUIDialogBmp" Value="Dialog.bmp"/>
+
+    <!-- ── Custom actions ─────────────────────────────────────────────── -->
+
+    <!-- Install Python dependencies after files are laid down -->
+    <CustomAction Id="InstallPythonDeps"
+                  Directory="ENGINE_DIR"
+                  ExeCommand="[ENGINE_DIR]python\python.exe -m pip install --no-index --find-links=[ENGINE_DIR]wheels\ -r [ENGINE_DIR]requirements.txt"
+                  Return="ignore"
+                  Impersonate="no"/>
+
+    <!-- Generate gRPC proto stubs -->
+    <CustomAction Id="GenerateProtoStubs"
+                  Directory="ENGINE_DIR"
+                  ExeCommand="[ENGINE_DIR]python\python.exe -m grpc_tools.protoc -I[ENGINE_DIR]physicsflow\proto --python_out=[ENGINE_DIR]physicsflow\proto --grpc_python_out=[ENGINE_DIR]physicsflow\proto [ENGINE_DIR]physicsflow\proto\simulation.proto [ENGINE_DIR]physicsflow\proto\history_matching.proto [ENGINE_DIR]physicsflow\proto\agent.proto"
+                  Return="ignore"
+                  Impersonate="no"/>
+
+    <InstallExecuteSequence>
+      <Custom Action="InstallPythonDeps" Before="InstallFinalize">
+        NOT Installed
+      </Custom>
+      <Custom Action="GenerateProtoStubs" After="InstallPythonDeps">
+        NOT Installed
+      </Custom>
+    </InstallExecuteSequence>
+
+    <!-- ── Conditions ──────────────────────────────────────────────────── -->
+    <Condition Message="PhysicsFlow requires Windows 10 or later (build 19041+).">
+      <![CDATA[VersionNT >= 1000 OR NOT Installed]]>
+    </Condition>
+
+  </Package>
+</Wix>

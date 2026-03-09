@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PhysicsFlow</AssemblyName>
+    <ApplicationIcon>Resources\physicsflow.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Company>PhysicsFlow Technologies</Company>
+    <Product>PhysicsFlow Reservoir Simulation Platform</Product>
+    <Description>AI-Accelerated Reservoir Simulation and History Matching</Description>
+    <Copyright>Copyright © 2025 PhysicsFlow Technologies</Copyright>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <StartupObject>PhysicsFlow.App.App</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhysicsFlow.ViewModels\PhysicsFlow.ViewModels.csproj" />
+    <ProjectReference Include="..\PhysicsFlow.Infrastructure\PhysicsFlow.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MahApps.Metro for modern Fluent-style controls (free, open-source) -->
+    <PackageReference Include="MahApps.Metro" Version="2.4.10" />
+    <PackageReference Include="MahApps.Metro.IconPacks" Version="5.0.0" />
+    <!-- Charts -->
+    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc2" />
+    <!-- 3D visualization -->
+    <PackageReference Include="HelixToolkit.Wpf" Version="2.25.0" />
+    <!-- Dependency injection -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <!-- Logging -->
+    <PackageReference Include="Serilog" Version="4.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+  </ItemGroup>
+
+</Project>
