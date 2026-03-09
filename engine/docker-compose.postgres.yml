@@ -1,0 +1,107 @@
+## PhysicsFlow v2.0 — Team on-premise stack (PostgreSQL)
+##
+## Use this compose file when multiple engineers share one engine server:
+##
+##   docker compose -f docker-compose.postgres.yml up -d
+##
+## PostgreSQL data persists in the `pg_data` named volume.
+## Set PHYSICSFLOW_REST_API_KEY in .env to require API key authentication.
+
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL database ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: physicsflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-physicsflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB:       ${POSTGRES_DB:-physicsflow}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/init_pg.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-physicsflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── AI model server ──────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: physicsflow-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── PhysicsFlow engine ───────────────────────────────────────────────────────
+  physicsflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: physicsflow-engine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "50051:50051"
+      - "8000:8000"
+    volumes:
+      - pf_data:/data
+    environment:
+      # Database — PostgreSQL (team mode)
+      PHYSICSFLOW_DB_URL: >-
+        postgresql+psycopg2://${POSTGRES_USER:-physicsflow}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-physicsflow}
+      PHYSICSFLOW_TEAM_MODE: "true"
+      # REST API
+      PHYSICSFLOW_REST_ENABLED: "true"
+      PHYSICSFLOW_REST_PORT: "8000"
+      PHYSICSFLOW_REST_HOST: "0.0.0.0"
+      PHYSICSFLOW_REST_API_KEY: ${PHYSICSFLOW_REST_API_KEY:-}
+      PHYSICSFLOW_REST_CORS_ORIGINS: >-
+        ["http://localhost:8888","http://localhost:3000","http://localhost:8501"]
+      # Paths
+      PHYSICSFLOW_PROJECTS_DIR: /data/projects
+      PHYSICSFLOW_MODELS_DIR: /data/models
+      # LLM
+      PHYSICSFLOW_OLLAMA_HOST: http://ollama:11434
+      PHYSICSFLOW_DEFAULT_LLM_MODEL: llama3.1
+    env_file:
+      - .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 5
+
+volumes:
+  pf_data:
+  pg_data:
+  ollama_data:

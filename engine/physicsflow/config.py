@@ -70,6 +70,53 @@ class EngineConfig(BaseSettings):
     default_dy: float = Field(default=50.0)
     default_dz: float = Field(default=20.0)
 
+    # ── Database (v2.0) ───────────────────────────────────────────────────────
+    db_url: str = Field(
+        default="",
+        description=(
+            "Full SQLAlchemy URL. Overrides PHYSICSFLOW_DB_PATH when set. "
+            "sqlite:///path  or  postgresql+psycopg2://user:pw@host:5432/db"
+        ),
+    )
+    team_mode: bool = Field(
+        default=False,
+        description=(
+            "Enable multi-user features. Auto-set to True when db_url "
+            "points to PostgreSQL."
+        ),
+    )
+
+    # ── REST API (v2.0) ───────────────────────────────────────────────────────
+    rest_enabled: bool = Field(
+        default=True,
+        description="Launch FastAPI REST API alongside gRPC server.",
+    )
+    rest_port: int = Field(default=8000, description="FastAPI listen port")
+    rest_host: str = Field(default="0.0.0.0", description="FastAPI bind address")
+    rest_api_key: str = Field(
+        default="",
+        description=(
+            "When non-empty, every REST request must supply a matching "
+            "X-API-Key header.  Leave empty for single-user local installs."
+        ),
+    )
+    rest_cors_origins: list[str] = Field(
+        default=["http://localhost:8888", "http://localhost:3000"],
+        description="Allowed CORS origins (Jupyter + React dev defaults).",
+    )
+
+    # ── tNavigator bridge (v2.0) ──────────────────────────────────────────────
+    tnavigator_exe: str = Field(
+        default="",
+        description="Path to tNavigator executable. Empty = bridge-only, no simulation.",
+    )
+    tnavigator_license_server: str = Field(
+        default="",
+        description="tNavigator licence server, e.g. 27000@licserver.",
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
+
     def torch_device(self) -> str:
         """Return PyTorch device string."""
         if self.use_gpu:
@@ -85,6 +132,14 @@ class EngineConfig(BaseSettings):
         """Create output directories if they don't exist."""
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.projects_dir.mkdir(parents=True, exist_ok=True)
+
+    def is_postgres(self) -> bool:
+        """Return True if db_url points to PostgreSQL."""
+        return self.db_url.startswith("postgresql")
+
+    def effective_team_mode(self) -> bool:
+        """team_mode is implicitly True when PostgreSQL is configured."""
+        return self.team_mode or self.is_postgres()
 
 
 # Global singleton (loaded once at import time)

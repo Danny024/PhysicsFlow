@@ -11,9 +11,9 @@ The .NET desktop application starts this process automatically via EngineManager
 """
 
 from __future__ import annotations
-import asyncio
 import signal
 import sys
+import threading
 from concurrent import futures
 from typing import NoReturn
 
@@ -84,6 +84,55 @@ def create_server(
     return server
 
 
+def _start_rest_api(cfg: EngineConfig,
+                    context: ReservoirContextProvider,
+                    db_svc) -> None:
+    """
+    Launch the FastAPI REST server in a daemon background thread.
+
+    The thread is daemonised so it automatically dies when the main
+    gRPC process exits — no cleanup required.
+    """
+    if not cfg.rest_enabled:
+        logger.info("REST API disabled (rest_enabled=false).")
+        return
+
+    try:
+        import uvicorn
+        from .api.app import create_rest_app
+    except ImportError as exc:
+        logger.warning(
+            "REST API dependencies not installed (%s). "
+            "Install with: pip install fastapi uvicorn[standard] python-multipart",
+            exc,
+        )
+        return
+
+    app = create_rest_app(cfg, context, db_svc)
+
+    uv_config = uvicorn.Config(
+        app,
+        host=cfg.rest_host,
+        port=cfg.rest_port,
+        log_level="warning",       # Uvicorn's own logs; application uses loguru
+        access_log=False,
+    )
+    server = uvicorn.Server(uv_config)
+
+    def _run():
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(server.serve())
+
+    t = threading.Thread(target=_run, daemon=True, name="rest-api")
+    t.start()
+    logger.info(
+        "REST API starting on http://%s:%s  (docs: /docs)",
+        cfg.rest_host, cfg.rest_port,
+    )
+
+
 @click.command()
 @click.option("--port", default=50051, show_default=True, help="gRPC listen port")
 @click.option("--workers", default=8, show_default=True, help="Thread pool workers")
@@ -117,11 +166,14 @@ def main(port: int, workers: int, log_level: str) -> NoReturn:
     # Shared context store
     context = ReservoirContextProvider()
 
-    # Build and start server
+    # Build and start servers
     cfg = EngineConfig()
     server = create_server(port, workers, context, cfg)
     server.start()
     logger.info(f"gRPC server listening on 0.0.0.0:{port}")
+
+    # v2.0 — REST API (optional, daemon thread)
+    _start_rest_api(cfg, context, db_svc)
 
     # Write ready signal for .NET EngineManager to detect
     with open("engine.ready", "w") as f:

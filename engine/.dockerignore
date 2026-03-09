@@ -1,0 +1,59 @@
+# PhysicsFlow engine — Docker build context exclusions
+
+# Version control
+.git
+.gitignore
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Environment files (injected at runtime, not baked in)
+.env
+*.env.local
+
+# Test artefacts
+tests/__pycache__/
+htmlcov/
+.coverage
+coverage.xml
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Large data files that should be mounted as volumes
+*.db
+*.sqlite
+*.sqlite3
+data/
+uploads/
+models/
+logs/
+
+# Generated gRPC stubs that must be regenerated from .proto sources
+physicsflow/proto/*_pb2*.py
+
+# tox / CI
+.tox/
+.nox/

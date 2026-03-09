@@ -4,8 +4,8 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "physicsflow-engine"
-version = "1.2.0"
-description = "Physics-Informed Neural Operator Reservoir Simulation Engine"
+version = "2.0.0"
+description = "Physics-Informed Neural Operator Reservoir Simulation Engine (on-premise scale-out)"
 authors = [{ name = "PhysicsFlow", email = "dev@physicsflow.ai" }]
 requires-python = ">=3.11"
 license = { text = "Commercial" }
@@ -58,6 +58,12 @@ dependencies = [
     "alembic>=1.13.0",
     # Encryption
     "cryptography>=42.0.0",
+    # REST API (v2.0)
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+    "psycopg2-binary>=2.9.9",
+    "asyncpg>=0.29.0",
 ]
 
 [project.optional-dependencies]
@@ -72,10 +78,11 @@ dev = [
 ]
 
 [project.scripts]
-physicsflow-engine  = "physicsflow.server:main"
+physicsflow-engine   = "physicsflow.server:main"
 physicsflow-pretrain = "physicsflow.training.pretrain_norne:main"
 physicsflow-encrypt  = "physicsflow.cli.encrypt_cmd:encrypt_cmd"
 physicsflow-decrypt  = "physicsflow.cli.encrypt_cmd:decrypt_cmd"
+physicsflow-rest     = "physicsflow.api.app:run_standalone"
 
 [tool.setuptools.packages.find]
 where = ["."]

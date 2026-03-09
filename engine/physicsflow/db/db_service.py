@@ -20,7 +20,7 @@ import uuid
 from typing import Optional
 
 from .database import init_db, get_session
-from .models import Project, SimulationRun
+from .models import ModelVersion, Project, SimulationRun
 from .repositories import AuditRepo, HMRepo, ModelRepo, ProjectRepo, RunRepo
 
 log = logging.getLogger(__name__)
@@ -65,10 +65,52 @@ class DatabaseService:
         with get_session() as db:
             return ProjectRepo.all_recent(db, limit)
 
+    def list_projects(self, limit: int = 100) -> list:
+        with get_session() as db:
+            return ProjectRepo.all_recent(db, limit)
+
+    def get_project(self, project_id: str):
+        with get_session() as db:
+            return ProjectRepo.get(db, project_id)
+
+    def update_project(self, project_id: str, **kwargs) -> bool:
+        with get_session() as db:
+            proj = db.get(Project, project_id)
+            if proj is None:
+                return False
+            allowed = {"name", "description", "pfproj_path", "nx", "ny", "nz",
+                       "n_wells", "field_name", "country", "operator"}
+            for k, v in kwargs.items():
+                if k in allowed and hasattr(proj, k):
+                    setattr(proj, k, v)
+            return True
+
+    def delete_project(self, project_id: str) -> bool:
+        with get_session() as db:
+            ok = ProjectRepo.delete(db, project_id)
+            if ok:
+                AuditRepo.log(db, "project.deleted",
+                               f"Project deleted: {project_id}",
+                               project_id=project_id)
+            return ok
+
     # ── Simulation / Training runs ─────────────────────────────────────────
 
+    def list_runs(self, project_id: str, limit: int = 50) -> list:
+        with get_session() as db:
+            return RunRepo.recent(db, project_id, limit)
+
+    def get_run(self, run_id: str):
+        with get_session() as db:
+            return db.get(SimulationRun, run_id)
+
+    def get_epoch_history(self, run_id: str) -> list:
+        with get_session() as db:
+            return RunRepo.get_epoch_history(db, run_id)
+
     def start_run(self, project_id: str, run_type: str,
-                   config: Optional[dict] = None, seed: Optional[int] = None) -> str:
+                   config: Optional[dict] = None, seed: Optional[int] = None,
+                   **_extra) -> str:
         with get_session() as db:
             run = RunRepo.start(db, project_id=project_id,
                                  run_type=run_type, config=config, seed=seed)
@@ -107,7 +149,7 @@ class DatabaseService:
 
     # ── History matching ────────────────────────────────────────────────────
 
-    def new_hm_run_id(self) -> str:
+    def new_hm_run_id(self, project_id: str = "") -> str:
         return HMRepo.new_run_id()
 
     def record_hm_iteration(self, project_id: str, hm_run_id: str,
@@ -156,6 +198,40 @@ class DatabaseService:
                            entity_type="model", entity_id=mv.id,
                            metadata={"version_tag": version_tag, **metrics})
             return mv.id
+
+    def list_models(self, project_id: str) -> list:
+        with get_session() as db:
+            from sqlalchemy import desc
+            return (db.query(ModelVersion)
+                      .filter(ModelVersion.project_id == project_id)
+                      .order_by(desc(ModelVersion.created_at))
+                      .all())
+
+    def get_model_by_id(self, model_id: str):
+        with get_session() as db:
+            return db.get(ModelVersion, model_id)
+
+    def activate_model(self, model_id: str) -> bool:
+        with get_session() as db:
+            mv = db.get(ModelVersion, model_id)
+            if mv is None:
+                return False
+            # Deactivate siblings of same type in same project
+            (db.query(ModelVersion)
+               .filter(ModelVersion.project_id == mv.project_id,
+                       ModelVersion.model_type  == mv.model_type,
+                       ModelVersion.is_active   == True)
+               .update({"is_active": False}))
+            mv.is_active = True
+            AuditRepo.log(db, "model.activated",
+                           f"Model {model_id} activated",
+                           project_id=mv.project_id,
+                           entity_type="model", entity_id=model_id)
+            return True
+
+    def get_active_model(self, project_id: str, model_type: str):
+        with get_session() as db:
+            return ModelRepo.get_active(db, project_id, model_type)
 
     # ── Audit ───────────────────────────────────────────────────────────────
 

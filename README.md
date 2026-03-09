@@ -3,7 +3,7 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v1.3.0** — Released 2026-03-09
+**Current version: v2.0.0** — Released 2026-03-09
 
 ---
 
@@ -908,14 +908,99 @@ pytest tests/ -m "not slow" -v
 - [x] networkx dependency added to `pyproject.toml` (RAG group)
 - [x] Bug fixes: SyntaxError in `layers_of_well()`, wrong `get_session()` call, `hashlib` import order, dead code removal
 
-### v2.0 — Cloud & API
+### v2.0 — On-Premise Scale-Out ✅ Complete (this release)
 
-- [ ] REST API for programmatic / Jupyter access
-- [ ] Docker containerisation (Python engine)
-- [ ] Multi-user project sharing with role-based access
-- [ ] Eclipse / tNavigator commercial simulator bridge
-- [ ] Cloud GPU burst (Azure ML / AWS SageMaker)
-- [ ] Web dashboard (FastAPI + React)
+- [x] **FastAPI REST API** (`/api/v1`) — all engine capabilities exposed over HTTP for Jupyter,
+      automation scripts, and third-party tools; runs as a daemon thread alongside gRPC
+- [x] 10 REST route modules: health, projects, runs, simulation, training, history matching,
+      models, I/O (upload/parse/export), agent chat (sync + SSE streaming), tNavigator bridge
+- [x] **Dual database backend** — SQLite (single-user default) and PostgreSQL (team/server);
+      URL-aware factory in `database.py`; SQLite WAL mode; PostgreSQL connection pooling
+- [x] **API key authentication** — `X-API-Key` header; empty key = no auth (LAN single-user);
+      non-empty = enforced for team deployments; `require_api_key` FastAPI dependency
+- [x] **CORS middleware** — configurable origin list for Jupyter (8888), React (3000),
+      Streamlit (8501)
+- [x] **Docker on-premise deployment** — `nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04`
+      multi-stage `Dockerfile`; `docker-compose.yml` (SQLite single-user);
+      `docker-compose.postgres.yml` (PostgreSQL team stack); `docker/init_pg.sql`
+- [x] **.env.example** — documented environment template for all configuration variables
+- [x] **tNavigator bridge** (`io/tnavigator_bridge.py`) — keyword-based ASCII `.sim` parser;
+      bidirectional conversion: `.sim` → PhysicsFlow summary + `.pfproj` JSON;
+      REST endpoints: import, export, run (subprocess with 10-min timeout)
+- [x] **PINO model registry** — `ModelVersion` ↔ `SimulationRun` FK fully linked;
+      REST routes for list, get, activate, download checkpoint (FileResponse streaming)
+- [x] **DatabaseService v2.0** — added `list_projects`, `get_project`, `update_project`,
+      `delete_project`, `list_runs`, `get_run`, `get_epoch_history`, `list_models`,
+      `get_model_by_id`, `activate_model`, `get_active_model`
+- [x] **pyproject.toml** — bumped to v2.0.0; added `fastapi`, `uvicorn[standard]`,
+      `python-multipart`, `psycopg2-binary`, `asyncpg`; new `physicsflow-rest` CLI entry point
+- [x] SSE streaming chat (`POST /api/v1/agent/chat/stream`) — real-time token delivery for
+      web UIs and Jupyter streaming cells
+- [x] Background job model — simulation, training, and HM all return `run_id` immediately;
+      execution in daemon threads; status queryable via live context + DB endpoints
+
+### v2.1 — Full Cloud *(deferred — implement on customer demand)*
+
+- [ ] Docker images published to container registry (GHCR / Docker Hub / ACR)
+- [ ] Azure ML / AWS SageMaker GPU burst for large ensemble HM
+- [ ] React web dashboard (project browser, live training charts, HM fan charts)
+- [ ] Multi-tenant SaaS mode with user/org isolation and RBAC
+- [ ] Object storage (Azure Blob / S3) for model checkpoints and uploaded data
+- [ ] CI/CD pipeline: automated image build, push, and staging deployment on `main` push
+
+---
+
+## REST API Quick Reference (v2.0)
+
+Base URL: `http://<engine-host>:8000/api/v1`  |  Interactive docs: `/docs`
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Engine version, DB backend, ports |
+| GET/POST | `/projects` | List / create projects |
+| GET/PUT/DELETE | `/projects/{id}` | Get / update / delete project |
+| GET | `/projects/{id}/audit` | Immutable audit log for a project |
+| POST | `/simulation/run` | Start PINO forward simulation (async) |
+| GET | `/simulation/status` | Live simulation state |
+| POST | `/training/start` | Start PINO training job (async) |
+| GET | `/training/status` | Live training state (epoch, loss) |
+| POST | `/hm/start` | Start αREKI history matching (async) |
+| GET | `/hm/{id}/iterations` | Per-iteration mismatch / P10-P90 |
+| GET | `/models/projects/{id}` | List model checkpoints, newest first |
+| GET | `/models/{id}/download` | Stream `.pt` checkpoint to client |
+| POST | `/io/upload/{project_id}` | Upload Eclipse / LAS / pfproj file |
+| POST | `/io/parse/eclipse/{id}` | Parse Eclipse deck → JSON metadata |
+| POST | `/agent/chat` | Synchronous AI assistant (Jupyter) |
+| POST | `/agent/chat/stream` | SSE streaming AI assistant |
+| POST | `/tnav/import/{id}` | Parse tNavigator `.sim` deck |
+| GET | `/tnav/export/{id}` | Export project to tNavigator `.sim` |
+
+### Python client example
+
+```python
+import httpx
+
+BASE = "http://localhost:8000/api/v1"
+HEADERS = {}  # add {"X-API-Key": "secret"} for team mode
+
+# Check engine health
+r = httpx.get(f"{BASE}/health", headers=HEADERS)
+print(r.json())  # {"status": "ok", "version": "2.0.0", ...}
+
+# Start history matching
+r = httpx.post(f"{BASE}/hm/start", json={
+    "project_id": "norne-001",
+    "n_ensemble": 200,
+    "max_iterations": 20,
+}, headers=HEADERS)
+run_id = r.json()["run_id"]
+
+# Poll iterations
+r = httpx.get(f"{BASE}/hm/{run_id}/iterations",
+              params={"project_id": "norne-001"}, headers=HEADERS)
+for it in r.json():
+    print(f"Iter {it['iteration']:3d}  mismatch={it['mismatch']:.4f}")
+```
 
 ---
 
@@ -940,6 +1025,6 @@ pytest tests/ -m "not slow" -v
 
 ---
 
-*PhysicsFlow v1.1.0 — Built by the PhysicsFlow Technologies team.*
+*PhysicsFlow v2.0.0 — Built by the PhysicsFlow Technologies team.*
 *Repository: [github.com/Danny024/PhysicsFlow](https://github.com/Danny024/PhysicsFlow) (private)*
 *For issues and feature requests: [GitHub Issues](https://github.com/Danny024/PhysicsFlow/issues)*
