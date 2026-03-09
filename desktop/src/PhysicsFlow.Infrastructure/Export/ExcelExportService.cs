@@ -131,7 +131,7 @@ public class ExcelExportService : IExcelExportService
             for (int i = 0; i < labels.Length; i++)
             {
                 ws.Cell(5+i, 1).Value = labels[i];
-                ws.Cell(5+i, 2).Value = values[i];
+                ws.Cell(5+i, 2).Value = (ClosedXML.Excel.XLCellValue)(dynamic)values[i];
             }
             ws.Columns().AdjustToContents();
 

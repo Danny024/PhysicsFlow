@@ -1,0 +1,74 @@
+syntax = "proto3";
+package physicsflow;
+
+option csharp_namespace = "PhysicsFlow.Infrastructure.Proto";
+
+// ─── AI Reservoir Assistant Service ──────────────────────────────────────────
+
+service AgentService {
+  // Send a chat message; stream back token-by-token response
+  rpc Chat (ChatRequest) returns (stream ChatToken);
+  // List available Ollama models on this machine
+  rpc ListModels (ListModelsRequest) returns (ListModelsResponse);
+  // Set the active LLM model
+  rpc SetModel (SetModelRequest) returns (SetModelResponse);
+  // Clear conversation history
+  rpc ClearHistory (ClearHistoryRequest) returns (ClearHistoryResponse);
+  // Get agent tool execution log (what tools it called)
+  rpc GetToolLog (ToolLogRequest) returns (ToolLogResponse);
+}
+
+message ChatRequest {
+  string session_id = 1;
+  string message = 2;
+  string context_project = 3;   // active project path (agent uses for tools)
+  bool include_charts = 4;      // request chart data in response
+}
+
+message ChatToken {
+  string token = 1;           // streaming LLM output token
+  bool is_tool_call = 2;      // true if this is a tool call notification
+  string tool_name = 3;       // e.g. "get_well_performance"
+  string tool_result = 4;     // JSON result of tool call
+  bool is_done = 5;           // final message signal
+  string full_response = 6;   // populated only when is_done=true
+  ChartData chart = 7;        // optional chart to display in UI
+}
+
+message ChartData {
+  string chart_type = 1;   // "line", "bar", "scatter", "fan"
+  string title = 2;
+  string x_label = 3;
+  string y_label = 4;
+  repeated ChartSeries series = 5;
+}
+
+message ChartSeries {
+  string name = 1;
+  repeated float x = 2;
+  repeated float y = 3;
+  repeated float y_lower = 4;  // for fan charts (P10)
+  repeated float y_upper = 5;  // for fan charts (P90)
+  string color = 6;
+  string line_style = 7;   // "solid", "dashed", "dotted"
+}
+
+message ListModelsRequest {}
+message ListModelsResponse { repeated string models = 1; string active_model = 2; }
+
+message SetModelRequest { string model_name = 1; }
+message SetModelResponse { bool success = 1; string message = 2; }
+
+message ClearHistoryRequest { string session_id = 1; }
+message ClearHistoryResponse { bool cleared = 1; }
+
+message ToolLogRequest { string session_id = 1; }
+message ToolLogResponse { repeated ToolCall calls = 1; }
+
+message ToolCall {
+  string tool_name = 1;
+  string arguments = 2;   // JSON
+  string result = 3;      // JSON
+  float duration_ms = 4;
+  string timestamp = 5;
+}

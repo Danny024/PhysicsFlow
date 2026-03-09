@@ -132,9 +132,10 @@
                                IsHeadLightEnabled="True">
                 <h:DefaultLights/>
                 <ModelVisual3D Content="{Binding ReservoirModel3D}"/>
-                <ModelVisual3D Content="{Binding WellModel3D}"
-                               Visibility="{Binding ShowWells,
-                                   Converter={StaticResource BoolToVisConverter}}"/>
+                <ContainerUIElement3D Visibility="{Binding ShowWells,
+                                   Converter={StaticResource BoolToVisConverter}}">
+                    <ModelVisual3D Content="{Binding WellModel3D}"/>
+                </ContainerUIElement3D>
             </h:HelixViewport3D>
         </Border>
 

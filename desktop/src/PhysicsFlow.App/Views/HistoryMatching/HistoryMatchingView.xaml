@@ -106,8 +106,11 @@
                                        Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
                             <TextBlock Text="{Binding Alpha, StringFormat={}{0:F3}}"
                                        FontSize="28" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding SCumulative, StringFormat=s = {0:F3}}"
-                                       FontSize="10" Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                            <TextBlock FontSize="10" Foreground="{DynamicResource MahApps.Brushes.Gray5}">
+                                <TextBlock.Text>
+                                    <Binding Path="SCumulative" StringFormat="s = {0:F3}"/>
+                                </TextBlock.Text>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource StatCardStyle}">

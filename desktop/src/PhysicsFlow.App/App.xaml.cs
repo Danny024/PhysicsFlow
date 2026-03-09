@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using PhysicsFlow.Infrastructure;
+using PhysicsFlow.Infrastructure.Agent;
 using PhysicsFlow.Infrastructure.Engine;
 using PhysicsFlow.Infrastructure.Data;
 using PhysicsFlow.Infrastructure.Reports;

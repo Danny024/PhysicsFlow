@@ -57,7 +57,8 @@ public class OllamaAgentClient
 
         Proto.AgentService.AgentServiceClient client = _client!;
 
-        AsyncServerStreamingCall<Proto.ChatToken> call;
+        AsyncServerStreamingCall<Proto.ChatToken>? call = null;
+        RpcException? rpcStartEx = null;
         try
         {
             call = client.Chat(request, cancellationToken: ct);
@@ -65,8 +66,13 @@ public class OllamaAgentClient
         catch (RpcException ex)
         {
             _logger.LogError(ex, "gRPC chat call failed");
+            rpcStartEx = ex;
+        }
+
+        if (rpcStartEx != null)
+        {
             yield return new ChatTokenResult(
-                Token: $"\n⚠ Engine error: {ex.Status.Detail}",
+                Token: $"\n⚠ Engine error: {rpcStartEx.Status.Detail}",
                 IsDone: true
             );
             yield break;
