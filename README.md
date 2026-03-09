@@ -3,7 +3,7 @@
 > Physics-Informed Neural Operator surrogate + Adaptive Ensemble Kalman Inversion +
 > Local LLM Reservoir Assistant — packaged as an industrial-grade desktop application.
 
-**Current version: v1.1.0** — Released 2025-03-09
+**Current version: v1.1.0** — Released 2026-03-09
 
 ---
 
@@ -14,16 +14,17 @@
 3. [Architecture Overview](#architecture-overview)
 4. [Technology Stack](#technology-stack)
 5. [Project Structure](#project-structure)
-6. [Scientific Background](#scientific-background)
-7. [Installation](#installation)
-8. [Quick Start](#quick-start)
-9. [AI Reservoir Assistant (Ollama)](#ai-reservoir-assistant)
-10. [Project File Format (.pfproj)](#project-file-format)
-11. [Running Unit Tests](#running-unit-tests)
-12. [Industry Compliance](#industry-compliance)
-13. [Competitive Positioning](#competitive-positioning)
-14. [Roadmap](#roadmap)
-15. [References](#references)
+6. [Database Layer](#database-layer)
+7. [Scientific Background](#scientific-background)
+8. [Installation](#installation)
+9. [Quick Start](#quick-start)
+10. [AI Reservoir Assistant (Ollama)](#ai-reservoir-assistant)
+11. [Project File Format (.pfproj)](#project-file-format)
+12. [Running Unit Tests](#running-unit-tests)
+13. [Industry Compliance](#industry-compliance)
+14. [Competitive Positioning](#competitive-positioning)
+15. [Roadmap](#roadmap)
+16. [References](#references)
 
 ---
 
@@ -71,6 +72,7 @@ Key innovations over the paper:
 | Production forecast | P10/P50/P90 fan charts, EUR, recovery factor — OxyPlot |
 | Project wizard | 5-step guided setup: Grid → Wells → PVT → Schedule → Save |
 | Unit tests | pytest suite: PVT, grid, wells, Kalman, localisation, material balance |
+| Database & audit | SQLite shared DB: projects, runs, epochs, HM iterations, audit log |
 
 ---
 
@@ -112,6 +114,22 @@ Key innovations over the paper:
 │          ReservoirContextProvider             │
 │  Thread-safe shared state (threading.RLock)  │
 │  Written by services → read by agent tools   │
+└──────────────────────────────┬───────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────┐
+│    SQLite Database — physicsflow.db           │
+│    %APPDATA%\PhysicsFlow\physicsflow.db       │
+│                                               │
+│  Python (SQLAlchemy — owns schema + writes)   │
+│  ├── DatabaseService singleton (thread-safe)  │
+│  ├── projects, simulation_runs, training_epochs│
+│  ├── hm_iterations, well_observations         │
+│  ├── model_versions, audit_log (append-only)  │
+│                                               │
+│  .NET (EF Core — read-optimised UI queries)   │
+│  ├── AppDbService (async, per-request ctx)    │
+│  └── 7 entity classes mirroring Python schema │
 └──────────────────────────────────────────────┘
 ```
 
@@ -144,6 +162,8 @@ Key innovations over the paper:
 | LAS I/O | Native parser (las_reader.py) | v1.1.0 |
 | Configuration | Pydantic-settings (PHYSICSFLOW_* env vars) | ≥ 2.3.0 |
 | Logging | Loguru | ≥ 0.7.0 |
+| Database ORM | SQLAlchemy (WAL mode, thread-safe sessions) | 2.0.x |
+| Migrations | Alembic (schema evolution) | 1.16.x |
 
 ### .NET Desktop
 
@@ -159,6 +179,7 @@ Key innovations over the paper:
 | PDF reports | QuestPDF (planned v1.2) | — |
 | Excel export | ClosedXML (planned v1.2) | — |
 | Logging | Serilog | latest |
+| Database ORM | EF Core + Microsoft.EntityFrameworkCore.Sqlite | 8.0.x |
 | Installer | WiX Toolset v4 | 4.x |
 
 ---
@@ -211,6 +232,14 @@ PhysicsFlow/
 │   │   │   ├── las_reader.py              ← LAS 2.0 parser: all sections, resample, batch read
 │   │   │   └── project.py                 ← PhysicsFlowProject: .pfproj JSON save/load
 │   │   │
+│   │   ├── db/                            ← SQLite persistence layer (SQLAlchemy)
+│   │   │   ├── __init__.py                ← Public exports
+│   │   │   ├── models.py                  ← 7 ORM models: Project, SimulationRun, TrainingEpoch,
+│   │   │   │                              │   HMIteration, WellObservation, ModelVersion, AuditLog
+│   │   │   ├── database.py                ← Engine (WAL mode), get_session() ctx manager, init_db()
+│   │   │   ├── repositories.py            ← ProjectRepo, RunRepo, HMRepo, WellObsRepo, ModelRepo, AuditRepo
+│   │   │   └── db_service.py              ← DatabaseService singleton (thread-safe facade)
+│   │   │
 │   │   └── services/                      ← gRPC service implementations
 │   │       ├── __init__.py
 │   │       ├── simulation_service.py      ← SimulationServicer + TrainingServicer
@@ -247,9 +276,20 @@ PhysicsFlow/
 │   │   │   ├── ForecastViewModel.cs       ← Fan charts, EUR stats, export commands
 │   │   │   └── ProjectSetupViewModel.cs   ← 5-step wizard, COMPDAT import, .pfproj save
 │   │   │
-│   │   └── PhysicsFlow.Infrastructure/    ← gRPC client, engine manager
+│   │   └── PhysicsFlow.Infrastructure/    ← gRPC client, engine manager, database layer
 │   │       ├── Engine/EngineManager.cs    ← Python process lifecycle, engine.ready signal
-│   │       └── Agent/OllamaAgentClient.cs ← gRPC streaming chat client
+│   │       ├── Agent/OllamaAgentClient.cs ← gRPC streaming chat client
+│   │       └── Data/                      ← EF Core read layer (shared SQLite)
+│   │           ├── PhysicsFlowDbContext.cs← EF Core DbContext: 7 DbSets, indexes, FK cascade
+│   │           ├── AppDbService.cs        ← Async UI query service (projects, runs, HM, wells)
+│   │           └── Entities/              ← 7 entity classes mirroring Python ORM schema
+│   │               ├── ProjectEntity.cs
+│   │               ├── SimulationRunEntity.cs
+│   │               ├── TrainingEpochEntity.cs
+│   │               ├── HMIterationEntity.cs
+│   │               ├── WellObservationEntity.cs
+│   │               ├── ModelVersionEntity.cs
+│   │               └── AuditLogEntity.cs
 │   │
 │   └── tests/                             ← .NET unit tests (planned v1.2)
 │
@@ -258,6 +298,85 @@ PhysicsFlow/
     ├── PhysicsFlow.Bundle.wxs             ← Bootstrapper: .NET 8 + VC++ + MSI
     └── build.ps1                          ← PowerShell build script (dotnet publish → wix)
 ```
+
+---
+
+## Database Layer
+
+PhysicsFlow uses a single **SQLite database** (`physicsflow.db`) shared between the Python engine
+and the .NET desktop application. Python owns the schema and all writes; .NET performs read-only
+queries for UI display.
+
+### Database File Location
+
+```
+Windows: %APPDATA%\PhysicsFlow\physicsflow.db
+         (C:\Users\<user>\AppData\Roaming\PhysicsFlow\physicsflow.db)
+```
+
+### Schema — 7 Tables
+
+| Table | Rows written by | Purpose |
+|---|---|---|
+| `projects` | Python `ProjectRepo` | Project registry — name, grid dims, HM status |
+| `simulation_runs` | Python `RunRepo` | Every training / forward run with timing + loss |
+| `training_epochs` | Python `RunRepo.add_epoch()` | Per-epoch losses for live loss curve |
+| `hm_iterations` | Python `HMRepo` | Per-αREKI iteration mismatch, α, P10/P50/P90 snapshots |
+| `well_observations` | Python `WellObsRepo` | Observed + simulated rates per well per timestep |
+| `model_versions` | Python `ModelRepo` | Checkpoint registry with SHA-256, loss, is_active flag |
+| `audit_log` | Python `AuditRepo` | Immutable append-only compliance log (UPDATE blocked) |
+
+### Python Layer (SQLAlchemy)
+
+```python
+from physicsflow.db.db_service import DatabaseService
+
+db = DatabaseService.instance()               # thread-safe singleton
+
+# Register / update a project
+db.register_project(project)
+
+# Record a training run
+run_id = db.start_run(project_id, "training", config)
+db.record_epoch(run_id, epoch=10, loss_total=0.042, loss_pde=0.018, ...)
+db.complete_run(run_id, loss_total=0.021)
+
+# History matching
+hm_run = db.new_hm_run_id(project_id)
+db.record_hm_iteration(project_id, hm_run, iteration=5, mismatch=0.31, alpha=0.5)
+
+# Audit
+db.audit("project.opened", f"Opened {project.name}", project_id=project_id)
+```
+
+### .NET Layer (EF Core)
+
+```csharp
+// Injected via DI (singleton)
+public class DashboardViewModel
+{
+    public DashboardViewModel(AppDbService db) { ... }
+
+    async Task LoadAsync()
+    {
+        var projects = await _db.GetRecentProjectsAsync(limit: 20);
+        var summary  = await _db.GetSummaryAsync();
+        var epochs   = await _db.GetEpochHistoryAsync(runId);
+        var wells    = await _db.GetWellNamesAsync(projectId);
+    }
+}
+```
+
+### Key Design Decisions
+
+- **WAL journal mode**: allows simultaneous Python writes + .NET reads without locking
+- **Foreign key cascade delete**: deleting a project removes all child rows automatically
+- **Immutable audit log**: SQLAlchemy `before_update` event raises `RuntimeError` on any
+  ORM-level UPDATE attempt — guarantees append-only compliance trail
+- **Shared path resolution**: both Python (`_default_db_path()`) and .NET (`ResolveDbPath()`)
+  resolve to the same `%APPDATA%\PhysicsFlow\physicsflow.db` path — zero configuration
+- **Schema owned by Python**: EF Core opens with `Cache=Shared` and never calls `EnsureCreated`
+  with migrations — Python `init_db()` / `create_all()` is the single source of truth
 
 ---
 
@@ -374,7 +493,7 @@ PhysicsFlow-Installer-1.1.0-x64.exe
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/physicsflow-technologies/physicsflow.git
+git clone https://github.com/Danny024/PhysicsFlow.git
 cd PhysicsFlow
 
 # 2. Python engine — create venv and install
@@ -597,13 +716,13 @@ pytest tests/ -m "not slow" -v
 
 | Requirement | Implementation |
 |---|---|
-| Audit trail | Every run logged: user, timestamp, input hash, output hash, random seed |
+| Audit trail | SQLite `audit_log` table: immutable append-only, user + hostname + timestamp + entity ref |
 | Reproducibility | Seed stored in `.pfproj`; deterministic replay guaranteed |
 | Data security | AES-256 project file encryption (v1.2 roadmap) |
 | Units | Imperial (field) and Metric — configurable per project |
 | Input standards | Eclipse .DATA / .EGRID / .UNRST; LAS 2.0 well logs |
 | Output standards | Excel (ClosedXML), PDF (QuestPDF), VTK (ResInsight/Paraview) |
-| Error logging | Serilog structured logs (.NET) + Loguru (Python) + crash reporting |
+| Error logging | Serilog structured logs (.NET) + Loguru (Python); errors captured in `simulation_runs.error_message` |
 | Physics validation | PDE residual quantified and available in project summary |
 | Reserve certification | Positioned as fast-screening tool; full FVM (OPM FLOW) recommended for final booking |
 | Installer | WiX v4 signed MSI — `Software\PhysicsFlow Technologies\PhysicsFlow` registry key |
@@ -652,6 +771,11 @@ pytest tests/ -m "not slow" -v
 - [x] ForecastViewModel + ProjectSetupViewModel
 - [x] pytest unit tests: PVT, grid, wells, Kalman, localisation, material balance
 - [x] WiX v4 MSI + bootstrapper bundle + PowerShell build script
+- [x] Python database layer: SQLAlchemy ORM (7 tables), WAL mode, 6 repositories, DatabaseService singleton
+- [x] .NET database layer: EF Core + SQLite, PhysicsFlowDbContext, 7 entity classes, AppDbService
+- [x] Immutable audit log: SQLAlchemy `before_update` event prevents any ORM UPDATE on audit_log
+- [x] Shared SQLite DB path (%APPDATA%\PhysicsFlow\physicsflow.db) — zero-config cross-process access
+- [x] Private GitHub repository: https://github.com/Danny024/PhysicsFlow
 
 ### v1.2.0 — Visualisation & Reports (Next)
 
@@ -696,4 +820,5 @@ pytest tests/ -m "not slow" -v
 ---
 
 *PhysicsFlow v1.1.0 — Built by the PhysicsFlow Technologies team.*
-*For issues and feature requests: [GitHub Issues](https://github.com/physicsflow-technologies/physicsflow/issues)*
+*Repository: [github.com/Danny024/PhysicsFlow](https://github.com/Danny024/PhysicsFlow) (private)*
+*For issues and feature requests: [GitHub Issues](https://github.com/Danny024/PhysicsFlow/issues)*
