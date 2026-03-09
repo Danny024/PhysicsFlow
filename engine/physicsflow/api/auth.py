@@ -10,12 +10,15 @@ env var and require all clients to supply the header.
 
 from __future__ import annotations
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import HTTPException, Request, Security, status
+from fastapi.security import APIKeyHeader
+
+_api_key_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def require_api_key(
     request: Request,
-    x_api_key: str | None = Header(default=None),
+    x_api_key: str | None = Security(_api_key_scheme),
 ) -> None:
     """
     FastAPI dependency — inject into any route that requires authentication.

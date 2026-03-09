@@ -330,7 +330,7 @@ class AuditLog(Base):
     process_id: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Metadata payload
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Outcome
     success: Mapped[bool]            = mapped_column(Boolean, default=True)

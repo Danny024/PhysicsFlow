@@ -65,7 +65,7 @@ class ProjectRepo:
     @staticmethod
     def all_recent(db: Session, limit: int = 20, offset: int = 0) -> List[Project]:
         return (db.query(Project)
-                  .order_by(desc(Project.last_opened_at.nullslast()),
+                  .order_by(desc(Project.last_opened_at).nullslast(),
                             desc(Project.modified_at))
                   .offset(offset)
                   .limit(limit)
@@ -408,7 +408,7 @@ class AuditRepo:
             process_id=os.getpid(),
             success=success,
             error_message=error_message,
-            metadata=metadata,
+            extra_data=metadata,
         )
         db.add(entry)
         db.flush()
