@@ -118,10 +118,14 @@ class RunListResponse(BaseModel):
 
 class TrainingEpochSchema(_ORM):
     epoch: int
-    loss_total: float
-    loss_pde: Optional[float]
-    loss_data: Optional[float]
-    loss_well: Optional[float]
+    loss_total: Optional[float] = None
+    loss_pde: Optional[float] = None
+    loss_data: Optional[float] = None
+    loss_well: Optional[float] = None
+    loss_ic: Optional[float] = None
+    loss_bc: Optional[float] = None
+    learning_rate: Optional[float] = None
+    gpu_util: Optional[float] = None
     recorded_at: datetime
 
 
@@ -141,10 +145,13 @@ class HMIterationSchema(_ORM):
     iteration: int
     mismatch: Optional[float]
     alpha: Optional[float]
+    s_cumulative: Optional[float]
+    improvement_pct: Optional[float]
     converged: bool
-    eur_p10: Optional[float]
-    eur_p50: Optional[float]
-    eur_p90: Optional[float]
+    p10_snapshot: Optional[list] = None
+    p50_snapshot: Optional[list] = None
+    p90_snapshot: Optional[list] = None
+    per_well_rmse: Optional[dict] = None
     recorded_at: datetime
 
 
@@ -155,14 +162,17 @@ class HMIterationSchema(_ORM):
 class WellObservationSchema(_ORM):
     well_name: str
     timestep: int
-    wopr_obs: Optional[float]
-    wopr_sim: Optional[float]
-    wwpr_obs: Optional[float]
-    wwpr_sim: Optional[float]
-    wgpr_obs: Optional[float]
-    wgpr_sim: Optional[float]
-    bhp_obs: Optional[float]
-    bhp_sim: Optional[float]
+    obs_wopr: Optional[float] = None
+    obs_wwpr: Optional[float] = None
+    obs_wgpr: Optional[float] = None
+    obs_wbhp: Optional[float] = None
+    obs_wwct: Optional[float] = None
+    sim_wopr: Optional[float] = None
+    sim_wwpr: Optional[float] = None
+    sim_wgpr: Optional[float] = None
+    sim_wbhp: Optional[float] = None
+    p10_wopr: Optional[float] = None
+    p90_wopr: Optional[float] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

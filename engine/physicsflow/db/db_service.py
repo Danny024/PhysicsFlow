@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import uuid
 from typing import Optional
 
 from .database import init_db, get_session
@@ -63,27 +62,38 @@ class DatabaseService:
 
     def get_recent_projects(self, limit: int = 20) -> list:
         with get_session() as db:
-            return ProjectRepo.all_recent(db, limit)
+            return ProjectRepo.all_recent(db, limit=limit)
 
-    def list_projects(self, limit: int = 100) -> list:
+    def list_projects(self, limit: int = 100, offset: int = 0) -> list:
         with get_session() as db:
-            return ProjectRepo.all_recent(db, limit)
+            return ProjectRepo.all_recent(db, limit, offset)
 
-    def get_project(self, project_id: str):
+    def register_project_from_dict(self, data: dict) -> "Project":
+        """Create a project from a dict (e.g. from ProjectCreateRequest.model_dump())."""
+        name        = data.pop("name")
+        pfproj_path = data.pop("pfproj_path")
+        with get_session() as db:
+            proj = ProjectRepo.get_or_create(db, name=name,
+                                              pfproj_path=pfproj_path, **data)
+            AuditRepo.log(db, "project.created", f"Project created: {name}",
+                           project_id=proj.id, project_name=name)
+            return proj
+
+    def get_project(self, project_id: str) -> "Optional[Project]":
         with get_session() as db:
             return ProjectRepo.get(db, project_id)
 
-    def update_project(self, project_id: str, **kwargs) -> bool:
+    def update_project(self, project_id: str, **kwargs) -> "Optional[Project]":
+        """Update allowed project fields. Returns the updated Project or None if not found."""
         with get_session() as db:
             proj = db.get(Project, project_id)
             if proj is None:
-                return False
-            allowed = {"name", "description", "pfproj_path", "nx", "ny", "nz",
-                       "n_wells", "field_name", "country", "operator"}
+                return None
+            allowed = {"name", "notes", "pfproj_path", "nx", "ny", "nz", "n_wells"}
             for k, v in kwargs.items():
                 if k in allowed and hasattr(proj, k):
                     setattr(proj, k, v)
-            return True
+            return proj
 
     def delete_project(self, project_id: str) -> bool:
         with get_session() as db:
@@ -96,9 +106,13 @@ class DatabaseService:
 
     # ── Simulation / Training runs ─────────────────────────────────────────
 
-    def list_runs(self, project_id: str, limit: int = 50) -> list:
+    def list_runs(self, project_id: Optional[str] = None,
+                   run_type: Optional[str] = None,
+                   status: Optional[str] = None,
+                   limit: int = 50) -> list:
         with get_session() as db:
-            return RunRepo.recent(db, project_id, limit)
+            return RunRepo.recent(db, project_id=project_id,
+                                   run_type=run_type, status=status, limit=limit)
 
     def get_run(self, run_id: str):
         with get_session() as db:
@@ -110,10 +124,11 @@ class DatabaseService:
 
     def start_run(self, project_id: str, run_type: str,
                    config: Optional[dict] = None, seed: Optional[int] = None,
-                   **_extra) -> str:
+                   n_ensemble: Optional[int] = None, **_extra) -> str:
         with get_session() as db:
             run = RunRepo.start(db, project_id=project_id,
-                                 run_type=run_type, config=config, seed=seed)
+                                 run_type=run_type, config=config, seed=seed,
+                                 n_ensemble=n_ensemble)
             AuditRepo.log(db, f"run.started",
                            f"{run_type.upper()} run started",
                            project_id=project_id,
@@ -130,8 +145,10 @@ class DatabaseService:
             run = db.get(SimulationRun, run_id)
             if run:
                 AuditRepo.log(db, "run.completed",
-                               f"{run.run_type.upper()} run completed in "
-                               f"{run.duration_seconds:.1f}s" if run.duration_seconds else "",
+                               (f"{run.run_type.upper()} run completed in "
+                                f"{run.duration_seconds:.1f}s")
+                               if run.duration_seconds
+                               else f"{run.run_type.upper()} run completed",
                                project_id=run.project_id,
                                entity_type="run", entity_id=run_id)
                 if run.run_type == "training":

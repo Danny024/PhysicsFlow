@@ -95,11 +95,11 @@ async def hm_ensemble_summary(request: Request, hm_run_id: str, project_id: str)
         "hm_run_id": hm_run_id,
         "iterations": [
             {
-                "iteration": i.iteration,
-                "mismatch":  i.mismatch,
-                "eur_p10":   i.eur_p10,
-                "eur_p50":   i.eur_p50,
-                "eur_p90":   i.eur_p90,
+                "iteration":    i.iteration,
+                "mismatch":     i.mismatch,
+                "p10_snapshot": i.p10_snapshot,
+                "p50_snapshot": i.p50_snapshot,
+                "p90_snapshot": i.p90_snapshot,
             }
             for i in iters
         ],

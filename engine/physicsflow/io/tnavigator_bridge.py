@@ -302,9 +302,14 @@ class TNavigatorBridge:
         import tempfile, os
         fd, tmp = tempfile.mkstemp(suffix=".sim")
         os.close(fd)
-        Path(tmp).write_text("\n".join(lines), encoding="utf-8")
-        bridge = TNavigatorBridge(tmp)
-        os.unlink(tmp)
+        try:
+            Path(tmp).write_text("\n".join(lines), encoding="utf-8")
+            bridge = TNavigatorBridge(tmp)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
         return bridge
 
     def to_sim(self) -> str:

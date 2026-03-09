@@ -63,10 +63,11 @@ class ProjectRepo:
         return proj
 
     @staticmethod
-    def all_recent(db: Session, limit: int = 20) -> List[Project]:
+    def all_recent(db: Session, limit: int = 20, offset: int = 0) -> List[Project]:
         return (db.query(Project)
                   .order_by(desc(Project.last_opened_at.nullslast()),
                             desc(Project.modified_at))
+                  .offset(offset)
                   .limit(limit)
                   .all())
 
@@ -116,12 +117,14 @@ class RunRepo:
 
     @staticmethod
     def start(db: Session, project_id: str, run_type: str,
-              config: Optional[dict] = None, seed: Optional[int] = None) -> SimulationRun:
+              config: Optional[dict] = None, seed: Optional[int] = None,
+              n_ensemble: Optional[int] = None) -> SimulationRun:
         run = SimulationRun(
             project_id=project_id,
             run_type=run_type,
             status="running",
             random_seed=seed,
+            n_ensemble=n_ensemble,
             input_hash=_hash_config(config) if config else None,
             config_snapshot=config,
         )
@@ -167,12 +170,18 @@ class RunRepo:
                   .all())
 
     @staticmethod
-    def recent(db: Session, project_id: str, limit: int = 50) -> List[SimulationRun]:
-        return (db.query(SimulationRun)
-                  .filter(SimulationRun.project_id == project_id)
-                  .order_by(desc(SimulationRun.started_at))
-                  .limit(limit)
-                  .all())
+    def recent(db: Session, project_id: Optional[str] = None,
+               run_type: Optional[str] = None,
+               status: Optional[str] = None,
+               limit: int = 50) -> List[SimulationRun]:
+        q = db.query(SimulationRun)
+        if project_id is not None:
+            q = q.filter(SimulationRun.project_id == project_id)
+        if run_type is not None:
+            q = q.filter(SimulationRun.run_type == run_type)
+        if status is not None:
+            q = q.filter(SimulationRun.status == status)
+        return q.order_by(desc(SimulationRun.started_at)).limit(limit).all()
 
     @staticmethod
     def last_training_run(db: Session, project_id: str) -> Optional[SimulationRun]:
