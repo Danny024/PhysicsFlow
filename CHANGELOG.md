@@ -5,6 +5,196 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Released] — v2.0.0 — On-Premise Scale-Out
+
+### Build: 2026-03-09
+
+### Added — REST API (FastAPI)
+
+- `physicsflow/api/app.py` — `create_rest_app(cfg, context, db_svc)` factory
+  - Mounts all 10 router modules under `/api/v1`
+  - `CORSMiddleware` with configurable origin list
+  - Startup/shutdown lifespan hooks writing to audit log
+  - `run_standalone()` entry point for headless REST-only deployments
+- `physicsflow/api/auth.py` — `require_api_key` FastAPI dependency
+  - No-op when `PHYSICSFLOW_REST_API_KEY` is empty (single-user LAN mode)
+  - Enforces `X-API-Key` header in team mode; returns HTTP 403 on mismatch
+- `physicsflow/api/schemas.py` — 18 Pydantic v2 request/response schemas
+  - All ORM-compatible via `ConfigDict(from_attributes=True)`
+  - `ProjectCreateRequest`, `ProjectSchema`, `ProjectListResponse`
+  - `TrainingStartRequest`, `RunSchema`, `TrainingEpochSchema`
+  - `HMStartRequest`, `HMIterationSchema` (correct ORM field names)
+  - `ModelVersionSchema`, `AuditLogSchema`
+  - `ChatRequest`, `ChatResponse`
+  - `tNavigatorImportResponse`, `StatusResponse`, `JobSubmittedResponse`
+- `physicsflow/api/routes/health.py` — `GET /health` (no auth)
+- `physicsflow/api/routes/projects.py` — full CRUD with pagination
+- `physicsflow/api/routes/runs.py` — list/get runs with type+status filters; epoch history
+- `physicsflow/api/routes/simulation.py` — async run, live status, well data, base64 field arrays
+- `physicsflow/api/routes/training.py` — async start/stop, live epoch/loss status
+- `physicsflow/api/routes/history_matching.py` — async start/stop, iterations, ensemble P10/P50/P90
+- `physicsflow/api/routes/models.py` — list, activate, download `.pt` checkpoint (FileResponse)
+- `physicsflow/api/routes/io.py` — multipart upload, Eclipse deck parse, pfproj export
+- `physicsflow/api/routes/agent.py` — synchronous chat + SSE streaming; lazy ReservoirAgent init
+- `physicsflow/api/routes/tnavigator.py` — import `.sim`, export `.sim`, subprocess run
+
+### Added — tNavigator Bridge
+
+- `physicsflow/io/tnavigator_bridge.py` — bidirectional `.sim` ↔ `.pfproj` converter
+  - Keyword-based ASCII parser: `DIMENS`, `WELSPECS`, `COMPDAT`, `WCONPROD`,
+    `TSTEP`, `ACTNUM`, `PERMX/Y/Z`, `PORO`, `TOPS`, `DX/DY/DZ`
+  - `TNavigatorBridge(sim_path)` — parse and expose `SimDeck`
+  - `to_summary()` — returns grid dims, well names, n_timesteps, keywords found
+  - `to_pfproj()` — converts deck to PhysicsFlow project dict
+  - `from_pfproj(path)` — loads `.pfproj` and builds synthetic deck
+  - `to_sim()` — renders deck back to Eclipse-compatible ASCII text
+  - Temp file always cleaned up via `try/finally`
+
+### Added — Dual Database Backend
+
+- `physicsflow/db/database.py` — URL-aware factory replacing SQLite-only singleton
+  - `_resolve_db_url()` checks `PHYSICSFLOW_DB_URL` env → `config.db_url` → `PHYSICSFLOW_DB_PATH` → OS default
+  - SQLite: WAL mode + `check_same_thread=False` + `pool_pre_ping`
+  - PostgreSQL: `pool_size=10`, `max_overflow=20`, `pool_recycle=1800`
+  - `db_backend()` helper returning `"sqlite"` or `"postgresql"`
+  - `reset_engine()` for test teardown
+
+### Added — Docker On-Premise Deployment
+
+- `engine/Dockerfile` — multi-stage `nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04` build
+  - Stage 1: builder installs all Python wheels
+  - Stage 2: runtime copies installed packages; health-check via `/api/v1/health`
+- `engine/docker-compose.yml` — single-user stack (SQLite + Ollama)
+  - GPU pass-through via NVIDIA Container Toolkit
+  - Named volumes: `pf_data`, `ollama_data`
+- `engine/docker-compose.postgres.yml` — team stack (PostgreSQL + Ollama)
+  - `postgres:16-alpine` with health-check
+  - `PHYSICSFLOW_REST_API_KEY` for team authentication
+- `engine/docker/init_pg.sql` — PostgreSQL init: `uuid-ossp`, `pg_trgm` extensions
+- `engine/.env.example` — documented environment template for all 15 config variables
+- `engine/.dockerignore` — excludes venv, data volumes, generated stubs, IDE files
+
+### Added — DatabaseService Methods
+
+- `register_project_from_dict(data)` — creates project from request dict
+- `list_projects(limit, offset)` — paginated project listing
+- `update_project(project_id, **kwargs)` — returns updated `Project` ORM object
+- `delete_project(project_id)` — cascade delete with audit log
+- `list_runs(project_id, run_type, status, limit)` — filtered run listing
+- `get_run(run_id)`, `get_epoch_history(run_id)`
+- `list_models(project_id)`, `get_model_by_id(model_id)`
+- `activate_model(model_id)` — deactivates siblings, writes audit log
+- `get_active_model(project_id, model_type)`
+
+### Added — Configuration
+
+- `physicsflow/config.py` — three new setting groups in `EngineConfig`
+  - Database: `db_url`, `team_mode`
+  - REST API: `rest_enabled`, `rest_port`, `rest_host`, `rest_api_key`, `rest_cors_origins`
+  - tNavigator: `tnavigator_exe`, `tnavigator_license_server`
+  - Helpers: `is_postgres()`, `effective_team_mode()`
+
+### Changed
+
+- `physicsflow/server.py` — added `_start_rest_api()` launching Uvicorn as daemon thread
+  alongside gRPC; gracefully skips if `fastapi`/`uvicorn` not installed
+- `pyproject.toml` — version `2.0.0`; added `fastapi>=0.115.0`,
+  `uvicorn[standard]>=0.30.0`, `python-multipart>=0.0.9`,
+  `psycopg2-binary>=2.9.9`, `asyncpg>=0.29.0`; new `physicsflow-rest` CLI entry point
+- `physicsflow/db/repositories.py` — `ProjectRepo.all_recent()` supports `offset`;
+  `RunRepo.recent()` supports `run_type` and `status` filters;
+  `RunRepo.start()` stores `n_ensemble`
+
+### Fixed (Bug-Fix Pass — commit 025eaa9)
+
+- `register_project_from_dict()` missing (`NameError` at runtime)
+- `update_project()` returned `bool` instead of `Optional[Project]`
+- `list_runs()` / `RunRepo.recent()` ignored `run_type` / `status` filter args
+- `list_projects()` ignored `offset` pagination parameter
+- `HMIterationSchema` used `eur_p10/p50/p90` (non-existent) — corrected to `p10_snapshot/p50_snapshot/p90_snapshot`
+- `WellObservationSchema` field names were backwards (`wopr_obs` vs ORM `obs_wopr`)
+- `TrainingEpochSchema` missing `loss_ic`, `loss_bc`, `learning_rate`, `gpu_util`
+- `n_ensemble` was silently discarded instead of persisted to `SimulationRun`
+- Temp file leaked in `TNavigatorBridge.from_pfproj()` on exception
+- `complete_run()` f-string operator precedence (`f"x" f"y" if cond else ""`)
+
+### Architecture Decisions — v2.0.0
+
+- **On-premise over cloud**: reservoir data is commercially sensitive; keeping compute
+  on the operator's own hardware eliminates data sovereignty risk and widens addressable market
+- **Shared context object**: `ReservoirContextProvider` passed by reference to both gRPC
+  servicers and the REST `app.state` — zero serialisation overhead, single source of truth
+- **Daemon thread for REST**: REST server dies automatically when the gRPC process exits;
+  no separate process management required for single-server deployments
+- **v2.1 cloud deferred**: Azure ML burst, container registry, web dashboard, multi-tenant
+  SaaS — explicitly deferred until customer demand materialises
+
+---
+
+## [Released] — v1.3.0 — Intelligence Layer
+
+### Build: 2026-03-09
+
+### Added — Hybrid RAG Pipeline
+
+- `physicsflow/rag/vector_store.py` — ChromaDB dense vector store
+  - `BAAI/bge-small-en-v1.5` embeddings (512-dim, BGE instruction prefix)
+  - Persistent collection per project; upsert-safe
+- `physicsflow/rag/sparse_store.py` — BM25 sparse index (`rank-bm25`)
+  - Per-project index serialised to `%APPDATA%/PhysicsFlow/rag/`
+  - Word-boundary tokenisation with lowercase normalisation
+- `physicsflow/rag/retriever.py` — hybrid dense+sparse retriever
+  - Reciprocal Rank Fusion (RRF, k=60) score fusion
+  - Configurable `top_k_dense` / `top_k_sparse` / `top_k_fused`
+- `physicsflow/rag/reranker.py` — cross-encoder reranker
+  - `cross-encoder/ms-marco-MiniLM-L-6-v2` joint scoring
+  - Falls back gracefully if model unavailable
+- `physicsflow/rag/query_processor.py` — query expansion
+  - Multi-query generation (3 paraphrases via LLM)
+  - HyDE (Hypothetical Document Embedding) expansion
+- `physicsflow/rag/document_processor.py` — multi-format document ingestion
+  - PDF (PyMuPDF), Word (.docx), TXT, CSV, LAS 2.0, Eclipse `.DATA`
+  - Sliding-window chunking (512 tokens, 64 overlap)
+- `physicsflow/rag/indexer.py` — `RAGIndexer` — orchestrates ingest pipeline
+- `physicsflow/rag/context_builder.py` — formats retrieved chunks as LLM context
+- `physicsflow/rag/pipeline.py` — `RAGPipeline` end-to-end query entry point
+
+### Added — Reservoir Knowledge Graph
+
+- `physicsflow/kg/graph.py` — `ReservoirKnowledgeGraph` (`networkx.MultiDiGraph`)
+  - 9 `NodeType`s: Well, Layer, Fault, Segment, FluidContact, Zone, UncertainParameter, Observation, SimulationResult
+  - 8 `EdgeType`s: PERFORATES, BOUNDED_BY, CONNECTED_TO, SUPPORTS, HAS_OBSERVATION, HAS_RESULT, CORRELATES_WITH, TRUNCATED_BY
+  - `add_well()`, `add_layer()`, `add_fault()`, `add_connection()`, `add_observation()`
+- `physicsflow/kg/builder.py` — 4-source KG construction pipeline
+  - Layer 1: base structural (22 Norne layers, 53 faults, 5 segments)
+  - Layer 2: pfproj enrichment (17 producers, 5 injectors, completions, connections)
+  - Layer 3: SQLite sync (HM iterations, converged mismatch per well)
+  - Layer 4: live RMSE injection from `ReservoirContextProvider`
+- `physicsflow/kg/query_engine.py` — `KGQueryEngine` — 20-pattern NL query dispatch
+  - Deterministic regex dispatch to typed graph traversal methods
+  - Returns structured dict answers at near-zero latency
+- `physicsflow/kg/serializer.py` — atomic JSON persistence (`.tmp` → rename)
+- `physicsflow/kg/pipeline.py` — `KGPipeline` — build + query facade
+
+### Added — Agent Intelligence Layer
+
+- `physicsflow/agent/reservoir_agent.py` — upgraded to 3-layer grounding
+  - Layer 1: KG auto-injection (matching queries answered from graph before LLM)
+  - Layer 2: RAG context retrieval (hybrid dense+sparse+reranked)
+  - Layer 3: 10 live tool calls (8 original + `search_project_knowledge` + `query_reservoir_graph`)
+- `physicsflow/agent/tools.py` — 2 new tools
+  - `search_project_knowledge(query, top_k)` — hybrid RAG search with source attribution
+  - `query_reservoir_graph(question)` — structured KG traversal
+
+### Fixed
+
+- `SyntaxError` in `KGQueryEngine.layers_of_well()` (malformed walrus operator)
+- Wrong `get_session()` call in `KGBuilder._sync_hm_data()`
+- Redundant `import os, hashlib` inside `ModelRepo.register()` (shadowed module imports)
+- `ReservoirAgent` constructed with wrong kwargs: `ollama_host=` (rejected) and `context=` (should be `context_provider=`)
+
+---
+
 ## [Released] — v1.2.0
 
 ### Build: 2026-03-09
@@ -382,20 +572,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## Upcoming — v1.2.0
+## Upcoming — v2.1 — Full Cloud *(deferred — implement on customer demand)*
 
 ### Planned
-- [ ] Helix Toolkit 3D field viewer (pressure / saturation / permeability)
-- [ ] QuestPDF report generation (HM summary, EUR report)
-- [ ] ClosedXML Excel export (well data, ensemble statistics)
-- [ ] Real gRPC stub generation pipeline in CI
-- [ ] OPM FLOW result parser integration with EclipseReader
-- [ ] PINO surrogate pre-training on Norne reference runs
-- [ ] CCR training pipeline end-to-end test
-- [ ] Multi-field support (not just Norne)
-- [ ] Cloud GPU burst option (Azure ML / AWS SageMaker)
-- [ ] Web dashboard (FastAPI + React)
+- [ ] Docker images published to container registry (GHCR / Docker Hub / ACR)
+- [ ] Azure ML / AWS SageMaker GPU burst for large ensemble history matching
+- [ ] React web dashboard (project browser, live training charts, HM fan charts)
+- [ ] Multi-tenant SaaS mode with user/org isolation and RBAC
+- [ ] Object storage (Azure Blob / S3) for model checkpoints and uploaded data
+- [ ] CI/CD pipeline: automated image build, push, and staging deployment on `main` push
 
 ---
 
 *Maintained by the PhysicsFlow development team.*
+*Repository: [github.com/Danny024/PhysicsFlow](https://github.com/Danny024/PhysicsFlow)*

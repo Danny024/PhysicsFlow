@@ -298,9 +298,12 @@ toc_items = [
     ('14', 'Project File Encryption', '27'),
     ('15', 'PINO Pre-Training CLI', '29'),
     ('16', 'Settings & Configuration', '30'),
-    ('17', 'Troubleshooting', '31'),
-    ('18', 'Keyboard Shortcuts', '33'),
-    ('19', 'Glossary', '34'),
+    ('17', 'REST API Reference', '32'),
+    ('18', 'Docker Deployment', '34'),
+    ('19', 'tNavigator Bridge', '36'),
+    ('20', 'Troubleshooting', '38'),
+    ('21', 'Keyboard Shortcuts', '40'),
+    ('22', 'Glossary', '41'),
 ]
 toc_tbl = doc.add_table(rows=len(toc_items), cols=3)
 toc_tbl.style = 'Table Grid'
@@ -336,9 +339,10 @@ body('PhysicsFlow is an AI-accelerated reservoir simulation and history matching
      'Physics-Informed Neural Operator (PINO) surrogate, achieving a ~6,000× speed-up '
      'while maintaining physical consistency via Darcy PDE loss.')
 
-body('This manual covers everything required to install, configure, and use PhysicsFlow v1.3.0 '
-     'from project creation through history matching, forecasting, 3D visualisation, and the '
-     'v1.3.0 Intelligence Layer — Hybrid RAG knowledge assistant and Reservoir Knowledge Graph.')
+body('This manual covers everything required to install, configure, and use PhysicsFlow v2.0.0 '
+     'from project creation through history matching, forecasting, 3D visualisation, the '
+     'Intelligence Layer — Hybrid RAG knowledge assistant and Reservoir Knowledge Graph — '
+     'plus the new v2.0.0 REST API, Docker on-premise deployment, and tNavigator Bridge.')
 
 h2('1.1  Key Capabilities')
 simple_table(
@@ -355,13 +359,16 @@ simple_table(
         ('Reports & Export', 'QuestPDF HM/EUR reports; ClosedXML Excel with well/ensemble/training data'),
         ('Project File Encryption', 'AES-256-GCM (.pfproj.enc) with PBKDF2-HMAC-SHA256'),
         ('Eclipse I/O', 'Native .DATA / .EGRID / .UNRST reader; LAS 2.0 well logs'),
-        ('Database', 'SQLite audit trail: projects, runs, epochs, iterations, observations'),
+        ('Database', 'SQLite (single-user, WAL) / PostgreSQL (team) — dual-backend factory; projects, runs, epochs, iterations, observations'),
+        ('REST API', 'FastAPI v0.115 — 10 route modules under /api/v1; API key auth; SSE streaming for agent chat'),
+        ('Docker Deployment', 'NVIDIA CUDA 12.4 multi-stage image; docker-compose SQLite (single) + PostgreSQL (team) stacks'),
+        ('tNavigator Bridge', 'Bidirectional ASCII .sim ↔ .pfproj conversion; keyword tokeniser; no tNavigator SDK required'),
     ],
     col_widths=[Cm(5.5), Cm(12.0)],
 )
 
 h2('1.2  Supported Platforms')
-body('PhysicsFlow v1.3.0 runs on:')
+body('PhysicsFlow v2.0.0 runs on:')
 bullet('Windows 10 (build 19041+) or Windows 11, 64-bit')
 bullet('NVIDIA GPU with CUDA 12.x — strongly recommended for training and ensemble operations')
 bullet('CPU-only mode is supported but training will be significantly slower')
@@ -390,6 +397,7 @@ simple_table(
         ('.NET Runtime', '.NET 8.0 Desktop Runtime', 'Bundled in installer — no manual install'),
         ('Python', 'Python 3.11 (bundled)', 'Bundled — no separate installation required'),
         ('Ollama', 'Optional — for AI assistant', 'Ollama 0.2+ with phi3:mini pulled'),
+        ('Docker', 'Optional — for team/on-premise deployment', 'Docker Desktop 4.x + NVIDIA Container Toolkit'),
     ],
     col_widths=[Cm(4.0), Cm(6.0), Cm(7.5)],
 )
@@ -1170,10 +1178,175 @@ doc.add_page_break()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 16. TROUBLESHOOTING
+# 17. REST API REFERENCE
 # ══════════════════════════════════════════════════════════════════════════════
 
-h1('17  Troubleshooting')
+h1('17  REST API Reference')
+
+body('PhysicsFlow v2.0.0 exposes a FastAPI REST server on port 8000 (configurable via '
+     'PHYSICSFLOW_REST_PORT). The API is available alongside the gRPC engine and shares the '
+     'same ReservoirContextProvider — no serialisation overhead.')
+
+h2('17.1  Authentication')
+body('Set PHYSICSFLOW_API_KEY in the environment (or .env file) to enable API key protection. '
+     'Pass the key via the X-API-Key header. An empty key disables authentication (single-user mode).')
+code_block('curl -H "X-API-Key: your-key" http://localhost:8000/api/v1/health')
+
+h2('17.2  Route Modules')
+simple_table(
+    ['Module', 'Prefix', 'Key Endpoints'],
+    [
+        ('Health', '/api/v1/health', 'GET / — engine status and uptime'),
+        ('Projects', '/api/v1/projects', 'CRUD: list, create, get, update, delete projects'),
+        ('Runs', '/api/v1/runs', 'GET / — list runs; GET /{id} — run detail + epoch history'),
+        ('Simulation', '/api/v1/sim', 'POST /run — submit forward simulation; GET /status'),
+        ('Training', '/api/v1/training', 'POST /start — kick off PINO training; GET /status + SSE /stream'),
+        ('History Matching', '/api/v1/hm', 'POST /start — αREKI run; GET /{id}/iterations, /ensemble'),
+        ('Forecast', '/api/v1/forecast', 'POST /run — EUR forecast; GET /status'),
+        ('Models', '/api/v1/models', 'GET, POST, activate model versions per project'),
+        ('tNavigator', '/api/v1/tnav', 'POST /import, GET /export, POST /run'),
+        ('Audit', '/api/v1/audit', 'GET /log — filtered audit events'),
+    ],
+    col_widths=[Cm(3.5), Cm(4.5), Cm(9.5)],
+)
+
+h2('17.3  Python Client Example')
+code_block(
+    'import requests\n'
+    'BASE = "http://localhost:8000/api/v1"\n'
+    'HEADERS = {"X-API-Key": "your-key"}\n\n'
+    '# List projects\n'
+    'resp = requests.get(f"{BASE}/projects", headers=HEADERS)\n'
+    'print(resp.json())\n\n'
+    '# Start history matching\n'
+    'body = {"project_id": "abc123", "n_ensemble": 200, "max_iterations": 8}\n'
+    'resp = requests.post(f"{BASE}/hm/start", json=body, headers=HEADERS)\n'
+    'run_id = resp.json()["run_id"]\n'
+    'print("HM run_id:", run_id)'
+)
+
+note('Interactive API docs are available at http://localhost:8000/docs (Swagger UI) '
+     'and http://localhost:8000/redoc (ReDoc) when the engine is running.')
+
+doc.add_page_break()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 18. DOCKER DEPLOYMENT
+# ══════════════════════════════════════════════════════════════════════════════
+
+h1('18  Docker Deployment')
+
+body('The PhysicsFlow engine ships as an NVIDIA CUDA Docker image for on-premise team deployment. '
+     'Two compose stacks are provided: SQLite (single-user) and PostgreSQL (team).')
+
+h2('18.1  Prerequisites')
+bullet('Docker Desktop 4.x (Windows / Linux) or Docker Engine 24+')
+bullet('NVIDIA Container Toolkit installed and configured')
+bullet('NVIDIA GPU with CUDA 12.4 driver (≥ 525.85)')
+
+h2('18.2  Single-User SQLite Stack')
+code_block(
+    'cd engine\n'
+    'cp .env.example .env          # edit API key, model, ports\n'
+    'docker compose up -d\n'
+    '# Engine: http://localhost:8000/api/v1/health\n'
+    '# Ollama: http://localhost:11434'
+)
+
+h2('18.3  Team PostgreSQL Stack')
+code_block(
+    'cd engine\n'
+    'cp .env.example .env\n'
+    '# Set PHYSICSFLOW_DB_URL=postgresql+psycopg2://physicsflow:secret@db:5432/physicsflow\n'
+    'docker compose -f docker-compose.postgres.yml up -d'
+)
+
+h2('18.4  Key Environment Variables')
+simple_table(
+    ['Variable', 'Description', 'Default'],
+    [
+        ('PHYSICSFLOW_API_KEY', 'REST API key (empty = no auth)', '(empty)'),
+        ('PHYSICSFLOW_DB_URL', 'SQLAlchemy DB URL', 'sqlite:///physicsflow.db'),
+        ('PHYSICSFLOW_REST_PORT', 'FastAPI server port', '8000'),
+        ('PHYSICSFLOW_GRPC_PORT', 'gRPC server port', '50051'),
+        ('PHYSICSFLOW_DEVICE', 'torch.device string (cuda/cpu)', 'cuda'),
+        ('OLLAMA_BASE_URL', 'Ollama API endpoint', 'http://ollama:11434'),
+    ],
+    col_widths=[Cm(5.0), Cm(8.0), Cm(4.5)],
+)
+
+tip('Mount a host directory to /data inside the container to persist the SQLite database '
+    'and model checkpoints across container restarts:\n'
+    'volumes:\n  - ./data:/data')
+
+doc.add_page_break()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 19. TNAVIGATOR BRIDGE
+# ══════════════════════════════════════════════════════════════════════════════
+
+h1('19  tNavigator Bridge')
+
+body('The tNavigator Bridge provides bidirectional conversion between tNavigator / Eclipse-compatible '
+     'ASCII .sim decks and PhysicsFlow .pfproj JSON project files. No tNavigator SDK or licence '
+     'is required — the bridge reads and writes plain ASCII text.')
+
+h2('19.1  Importing a .sim Deck')
+body('Via REST API:')
+code_block(
+    'curl -X POST http://localhost:8000/api/v1/tnav/import/PROJECT_ID \\\n'
+    '     -H "X-API-Key: your-key" \\\n'
+    '     -F "file=@NorneModel.sim"'
+)
+body('The response includes a summary of the parsed deck:')
+code_block(
+    '{\n'
+    '  "project_id": "abc123",\n'
+    '  "nx": 46, "ny": 112, "nz": 22,\n'
+    '  "n_active": 44431,\n'
+    '  "n_wells": 22,\n'
+    '  "producers": ["B-1H", "B-2H", ...],\n'
+    '  "injectors": ["B-4H", ...],\n'
+    '  "n_timesteps": 180,\n'
+    '  "total_days": 4380.0,\n'
+    '  "keywords_found": ["ACTNUM", "PORO", "PERMX", ...]\n'
+    '}'
+)
+
+h2('19.2  Exporting a .sim Deck')
+code_block(
+    'curl http://localhost:8000/api/v1/tnav/export/PROJECT_ID \\\n'
+    '     -H "X-API-Key: your-key" \\\n'
+    '     -o NorneExport.sim'
+)
+
+h2('19.3  Supported Keywords')
+simple_table(
+    ['Section', 'Keywords Parsed'],
+    [
+        ('Grid Dimensions', 'DIMENS'),
+        ('Grid Properties', 'ACTNUM, PORO, PERMX, PERMY, PERMZ, NTG, TOPS, DX, DY, DZ'),
+        ('Wells', 'WELSPECS, COMPDAT, WCONPROD'),
+        ('Schedule', 'TSTEP'),
+        ('Metadata', 'TITLE'),
+    ],
+    col_widths=[Cm(4.5), Cm(13.0)],
+)
+
+note('The bridge is extensible. Additional keyword handlers can be added in '
+     'engine/physicsflow/io/tnavigator_bridge.py by adding keyword names to the '
+     'elif kw in (...) block.')
+
+doc.add_page_break()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 19. TROUBLESHOOTING  (renumbered to 20)
+# ══════════════════════════════════════════════════════════════════════════════
+
+h1('20  Troubleshooting')
 
 simple_table(
     ['Problem', 'Likely Cause', 'Solution'],
@@ -1213,13 +1386,13 @@ simple_table(
     col_widths=[Cm(4.0), Cm(5.5), Cm(8.0)],
 )
 
-h2('17.1  Log Files')
+h2('20.1  Log Files')
 body('PhysicsFlow writes detailed logs to:')
 bullet('%APPDATA%\\PhysicsFlow\\logs\\physicsflow.log — .NET desktop application log (Serilog)')
 bullet('%APPDATA%\\PhysicsFlow\\logs\\engine.log — Python gRPC engine log (Loguru)')
 body('Set Log Level to Verbose in Settings to capture maximum detail for bug reports.')
 
-h2('17.2  Reporting Issues')
+h2('20.2  Reporting Issues')
 body('Report bugs or feature requests at:')
 code_block('https://github.com/Danny024/PhysicsFlow/issues')
 body('Please include:')
@@ -1232,10 +1405,10 @@ doc.add_page_break()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 17. KEYBOARD SHORTCUTS
+# 21. KEYBOARD SHORTCUTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-h1('18  Keyboard Shortcuts')
+h1('21  Keyboard Shortcuts')
 
 simple_table(
     ['Shortcut', 'Action'],
@@ -1267,10 +1440,10 @@ doc.add_page_break()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 18. GLOSSARY
+# 22. GLOSSARY
 # ══════════════════════════════════════════════════════════════════════════════
 
-h1('19  Glossary')
+h1('22  Glossary')
 
 simple_table(
     ['Term', 'Definition'],
@@ -1308,15 +1481,24 @@ simple_table(
         ('RRF', 'Reciprocal Rank Fusion — score fusion algorithm that combines rankings from dense and sparse retrieval without re-scoring'),
         ('ChromaDB', 'Open-source vector database for storing and querying dense embeddings; used as the PhysicsFlow RAG vector store'),
         ('BGE', 'BAAI/bge-small-en-v1.5 — 33M-parameter sentence embedding model from BAAI, used for RAG document embeddings'),
+        ('FastAPI', 'Modern Python async web framework used for the PhysicsFlow REST API; built on Starlette and Pydantic'),
+        ('REST', 'Representational State Transfer — HTTP-based API style using standard verbs (GET, POST, PUT, DELETE)'),
+        ('SSE', 'Server-Sent Events — one-directional HTTP streaming from server to client; used for live training log streaming'),
+        ('pfproj', 'PhysicsFlow project file — JSON document storing all study configuration, well data, and schedule'),
+        ('PostgreSQL', 'Open-source relational database used as the team/multi-user backend in PhysicsFlow Docker deployments'),
+        ('WAL', 'Write-Ahead Logging — SQLite journal mode enabling concurrent reads while a write is in progress'),
+        ('tNavigator', 'Reservoir simulation software by Rock Flow Dynamics; uses Eclipse-compatible ASCII .sim deck format'),
+        ('Docker', 'Container platform used to package the PhysicsFlow engine with all dependencies for on-premise deployment'),
+        ('CORS', 'Cross-Origin Resource Sharing — HTTP mechanism that allows web clients on different domains to call the REST API'),
     ],
     col_widths=[Cm(3.5), Cm(14.0)],
 )
 
 doc.add_paragraph()
-body('— End of PhysicsFlow User Manual v1.3.0 —', italic=True, color=MID_GREY)
+body('— End of PhysicsFlow User Manual v2.0.0 —', italic=True, color=MID_GREY)
 
 
 # ── Save ───────────────────────────────────────────────────────────────────────
-output_path = 'PhysicsFlow_UserManual_v130.docx'
+output_path = 'PhysicsFlow_UserManual_v200.docx'
 doc.save(output_path)
 print(f'Saved: {output_path}')

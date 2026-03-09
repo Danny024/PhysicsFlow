@@ -246,7 +246,7 @@ add_body(doc, 'The AI-Native Reservoir Simulation Platform',
 add_divider(doc, color='1565C0')
 
 add_body(doc,
-    'Physics-Informed Neural Operator  ·  Ensemble History Matching  ·  3D Visualisation  ·  RAG + Knowledge Graph AI',
+    'Physics-Informed Neural Operator  ·  Ensemble History Matching  ·  3D Visualisation  ·  RAG + Knowledge Graph AI  ·  REST API  ·  Docker  ·  tNavigator Bridge',
     color=CYAN, size=11, italic=True, space_before=4, space_after=16, center=True)
 
 # Key stats table
@@ -971,16 +971,16 @@ rm_data = [
         '20-pattern NL query engine', 'Index PDFs / LAS / CSV / reports',
         'query_reservoir_graph tool', 'search_project_knowledge tool',
     ]),
-    ('🔮  Q3 2026 — v1.4 Enterprise', AMBER, 'FFF9E6', [
-        'Compositional PVT (EOS)', 'Horizontal / multilateral wells',
-        'Multi-user project sharing', 'REST API for integrations',
-        'Cloud deployment (SaaS)', 'Audit trail — ISO 9001 path',
-        'Surface network (lite)', 'Auto-update delivery system',
+    ('✅  Shipped — v2.0 Scale-Out', BLUE, 'EBF5FB', [
+        'FastAPI REST API (10 routes)', 'API key auth + CORS middleware',
+        'Docker CUDA 12.4 image', 'docker-compose SQLite + PostgreSQL',
+        'tNavigator .sim ↔ .pfproj bridge', 'SSE streaming for agent chat',
+        'DatabaseService singleton', 'n_ensemble + per-well RMSE tracking',
     ]),
-    ('🚀  2027 — v2.0 Platform', BLUE, 'EBF5FB', [
-        'Geomechanics coupling', 'Thermal / EOR simulation',
-        'Eclipse 100/300 bridge API', 'Pre-trained surrogate marketplace',
-        'Transfer learning (<30 min)', 'Multi-GPU distributed training',
+    ('🔮  Next — v2.1 Cloud', AMBER, 'FFF9E6', [
+        'Managed GPU cloud (SaaS)', 'Compositional PVT (EOS)',
+        'Horizontal / multilateral wells', 'Multi-GPU distributed training',
+        'Pre-trained surrogate marketplace', 'Transfer learning (<30 min)',
         'SPE reserve certification', 'Petrel plugin',
     ]),
 ]
@@ -1168,7 +1168,7 @@ milestones = make_table(doc, 1, 3,
 ms_data = [
     ('30 Customers', 'Target by Month 18', CYAN, 'D6EAF8'),
     ('$2.1M ARR', 'Series A Milestone', GREEN, 'D5F5E3'),
-    ('v1.3 Shipped', 'RAG + Knowledge Graph Intelligence', AMBER, 'FFF9E6'),
+    ('v2.0 Shipped', 'REST API + Docker + tNavigator Bridge', AMBER, 'FFF9E6'),
 ]
 for j, (num, label, col, bg) in enumerate(ms_data):
     c = milestones.cell(0, j)
@@ -1238,6 +1238,6 @@ for j, (label, val, col, bg) in enumerate(contact_data):
 
 
 # ── Save ──────────────────────────────────────────────────────────────────────
-output = r'C:\Users\danie\OneDrive\Reservoir_Simulator\PhysicsFlow\PhysicsFlow_PitchDeck_v130.docx'
+output = r'C:\Users\danie\OneDrive\Reservoir_Simulator\PhysicsFlow\PhysicsFlow_PitchDeck_v200.docx'
 doc.save(output)
 print(f'Saved: {output}')
