@@ -32,6 +32,13 @@ dependencies = [
     "xgboost>=2.1.0",
     # LLM agent
     "ollama>=0.2.0",
+    # RAG — hybrid retrieval (optional but recommended)
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+    "rank-bm25>=0.2.2",
+    "pymupdf>=1.24.0",
+    # Knowledge Graph
+    "networkx>=3.3",
     # Reservoir I/O
     "resfo>=4.2.0",
     "lasio>=0.31",

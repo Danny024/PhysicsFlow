@@ -195,7 +195,12 @@ class PhysicsFlowProject:
         path.write_text(json.dumps(data, indent=2, default=str), encoding='utf-8')
 
         if password is not None:
-            from .crypto import encrypt_pfproj
+            from .crypto import encrypt_pfproj, _HAS_CRYPTOGRAPHY
+            if not _HAS_CRYPTOGRAPHY:
+                raise ImportError(
+                    "The 'cryptography' package is required for encryption. "
+                    "Install with: pip install cryptography"
+                )
             enc_path = encrypt_pfproj(path, password=password, remove_original=True)
             return enc_path
 

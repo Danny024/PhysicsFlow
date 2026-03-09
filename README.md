@@ -1,9 +1,9 @@
-# PhysicsFlow — AI-Accelerated Reservoir Simulation & History Matching Platform
+# PhysicsFlow — AI-Native Reservoir Simulation & History Matching Platform
 
-> Physics-Informed Neural Operator surrogate + Adaptive Ensemble Kalman Inversion +
-> Local LLM Reservoir Assistant — packaged as an industrial-grade desktop application.
+> Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
+> Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v1.2.0** — Released 2026-03-09
+**Current version: v1.3.0** — Released 2026-03-09
 
 ---
 
@@ -50,7 +50,7 @@ Key innovations over the paper:
 - **.NET 8 WPF desktop application**: professional UI comparable to REVEAL / Petex IPM Suite
 - **Eclipse I/O**: native reader for .DATA / .EGRID / .UNRST / LAS 2.0 formats
 - **Self-contained installer**: WiX v4 bootstrapper bundles Python, PyTorch wheels, and the
-  .NET app into a single `PhysicsFlow-Installer-1.1.0-x64.exe`
+  .NET app into a single `PhysicsFlow-Installer-1.2.0-x64.exe`
 
 ---
 
@@ -63,7 +63,9 @@ Key innovations over the paper:
 | Uncertainty quantification | Ensemble P10/P50/P90 with VCAE + DDIM generative priors |
 | Well model | CCR (Cluster-Classify-Regress) XGBoost mixture of experts |
 | Speed-up | ~6,000× vs OPM FLOW on the Norne 46×112×22 benchmark |
-| AI assistant | Local LLM (Ollama phi3:mini) with 8 live reservoir tool calls |
+| AI assistant | Local LLM (Ollama phi3:mini) with 10 live reservoir tool calls |
+| Hybrid RAG | ChromaDB dense + BM25 sparse + RRF fusion + cross-encoder reranking |
+| Knowledge graph | Reservoir KG (networkx): 22 layers, 22 wells, 53 faults, 5 segments, 20-pattern NL query |
 | Input formats | Eclipse .DATA / .EGRID / .UNRST, OPM, LAS 2.0 well logs, .pfproj |
 | Output formats | Excel (ClosedXML), PDF (QuestPDF), VTK for ResInsight/Paraview |
 | GPU acceleration | CUDA via PyTorch (PINO training) + XLA via JAX (ensemble ops) |
@@ -71,8 +73,13 @@ Key innovations over the paper:
 | Project management | .pfproj JSON project files capturing full study configuration |
 | Production forecast | P10/P50/P90 fan charts, EUR, recovery factor — OxyPlot |
 | Project wizard | 5-step guided setup: Grid → Wells → PVT → Schedule → Save |
+| 3D reservoir viewer | Interactive HelixToolkit voxel renderer: pressure/Sw/K fields, well markers, animation |
+| 2D cross-section viewer | I/J/K-plane slices via WriteableBitmap — Jet/Viridis/Seismic/Greys colormaps |
+| Project file encryption | AES-256-GCM (.pfproj.enc) — PBKDF2 600k iterations, CLI encrypt/decrypt commands |
 | Unit tests | pytest suite: PVT, grid, wells, Kalman, localisation, material balance |
 | Database & audit | SQLite shared DB: projects, runs, epochs, HM iterations, audit log |
+| CI/CD | GitHub Actions: Python 3.11/3.12 matrix, .NET desktop build, ruff lint, bandit security |
+| PINO pre-training | physicsflow-pretrain CLI: synthetic Norne ensemble, Buckley-Leverett proxy targets |
 
 ---
 
@@ -88,6 +95,12 @@ Key innovations over the paper:
 │  │  Stats   │  │ 5-step   │  │  (PINO)    │  │ (αREKI)  │  │  P90   │  │
 │  │  Wells   │  │  Wizard  │  │  Loss curve│  │ Fan chart│  │  EUR   │  │
 │  └──────────┘  └──────────┘  └────────────┘  └──────────┘  └─────────┘  │
+│                                                                            │
+│  ┌────────────────────────────┐  ┌────────────────────────────────────┐  │
+│  │  3D Reservoir Viewer       │  │  2D Cross-Section Viewer           │  │
+│  │  HelixToolkit voxels       │  │  I/J/K slices, WriteableBitmap     │  │
+│  │  Jet colormap, animation   │  │  Jet/Viridis/Seismic/Greys maps    │  │
+│  └────────────────────────────┘  └────────────────────────────────────┘  │
 │                                                                            │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │           AI Reservoir Assistant (streaming chat, tool calls)        │  │
@@ -107,7 +120,24 @@ Key innovations over the paper:
 │  PVT (PyTorch)   │  │  VCAE z-space    │  │  get_ensemble_stats     │
 │  Eclipse I/O     │  │  update          │  │  get_field_property     │
 │  LAS 2.0 reader  │  │                  │  │  explain_parameter      │
-└──────────────────┘  └──────────────────┘  └─────────────────────────┘
+└──────────────────┘  └──────────────────┘  │  search_project_        │
+                                             │    knowledge (RAG)      │
+                                             │  query_reservoir_graph  │
+                                             └────────────┬────────────┘
+                                                          │
+                    ┌─────────────────────────────────────┴──────────────────┐
+                    │           Intelligence Layer (v1.3.0)                   │
+                    │                                                         │
+                    │  ┌──────────────────────┐  ┌────────────────────────┐  │
+                    │  │  Hybrid RAG          │  │  Reservoir KG          │  │
+                    │  │  ChromaDB (dense)    │  │  networkx MultiDiGraph │  │
+                    │  │  BM25 sparse index   │  │  22 layers, 22 wells   │  │
+                    │  │  RRF fusion          │  │  53 faults, 5 segments │  │
+                    │  │  Cross-encoder rerank│  │  20-pattern NL engine  │  │
+                    │  │  BGE-small-en-v1.5   │  │  JSON persistence      │  │
+                    │  │  Multi-query / HyDE  │  │  4-source builder      │  │
+                    │  └──────────────────────┘  └────────────────────────┘  │
+                    └─────────────────────────────────────────────────────────┘
           │                    │
           ▼                    ▼
 ┌──────────────────────────────────────────────┐
@@ -164,6 +194,14 @@ Key innovations over the paper:
 | Logging | Loguru | ≥ 0.7.0 |
 | Database ORM | SQLAlchemy (WAL mode, thread-safe sessions) | 2.0.x |
 | Migrations | Alembic (schema evolution) | 1.16.x |
+| File encryption | cryptography (AES-256-GCM, PBKDF2-HMAC-SHA256) | ≥ 42.0.0 |
+| PINO pre-training | pretrain_norne.py — synthetic ensemble, CLI entry point | v1.2.0 |
+| RAG — vector store | ChromaDB (persistent, cosine similarity) | ≥ 0.5.0 |
+| RAG — embeddings | sentence-transformers (BAAI/bge-small-en-v1.5, 512-dim) | ≥ 3.0.0 |
+| RAG — sparse index | rank-bm25 (BM25Okapi) | ≥ 0.2.2 |
+| RAG — reranker | cross-encoder/ms-marco-MiniLM-L-6-v2 | ≥ 3.0.0 |
+| RAG — document I/O | PyMuPDF (PDF), python-docx (Word), chardet (TXT/CSV/LAS) | latest |
+| Knowledge graph | networkx (MultiDiGraph — typed nodes/edges) | ≥ 3.3 |
 
 ### .NET Desktop
 
@@ -174,10 +212,10 @@ Key innovations over the paper:
 | UI controls | MahApps.Metro (dark theme) | 2.4.10 |
 | Charts | OxyPlot.Wpf (fan charts, loss curves) | latest |
 | Animated charts | LiveCharts2 | latest |
-| 3D visualization | Helix Toolkit (planned v1.2) | — |
+| 3D visualization | HelixToolkit.Wpf (voxel renderer, well tubes) | latest |
 | gRPC client | Grpc.Net.Client | latest |
-| PDF reports | QuestPDF (planned v1.2) | — |
-| Excel export | ClosedXML (planned v1.2) | — |
+| PDF reports | QuestPDF Community (HM summary + EUR reports) | latest |
+| Excel export | ClosedXML (wells, ensemble stats, training history) | latest |
 | Logging | Serilog | latest |
 | Database ORM | EF Core + Microsoft.EntityFrameworkCore.Sqlite | 8.0.x |
 | Installer | WiX Toolset v4 | 4.x |
@@ -188,7 +226,7 @@ Key innovations over the paper:
 
 ```
 PhysicsFlow/
-├── README.md                              ← This file (v1.1.0)
+├── README.md                              ← This file (v1.3.0)
 ├── CHANGELOG.md                           ← Full version history
 ├── build_pitchdeck.py                     ← python-docx pitch deck generator
 │
@@ -222,15 +260,40 @@ PhysicsFlow/
 │   │   │   └── priors.py                  ← VCAE encoder + DDIMPrior + ReservoirPriorModel
 │   │   │
 │   │   ├── agent/                         ← LLM Reservoir Assistant
-│   │   │   ├── reservoir_agent.py         ← ReservoirAgent: Ollama tool-calling, streaming
-│   │   │   ├── tools.py                   ← 8 agent tools querying live simulation data
+│   │   │   ├── reservoir_agent.py         ← ReservoirAgent: Ollama tool-calling, streaming, KG injection
+│   │   │   ├── tools.py                   ← 10 agent tools: 8 live + search_project_knowledge + query_reservoir_graph
 │   │   │   └── context_provider.py        ← ReservoirContextProvider (thread-safe RLock)
+│   │   │
+│   │   ├── rag/                           ← Hybrid RAG knowledge assistant (v1.3.0)
+│   │   │   ├── __init__.py                ← Public exports
+│   │   │   ├── document_processor.py      ← DocumentChunk, source processors (PDF/Word/TXT/CSV/LAS/Eclipse)
+│   │   │   ├── vector_store.py            ← ChromaDB + BGE-small embeddings, cosine search, upsert/delete
+│   │   │   ├── bm25_index.py              ← BM25Okapi sparse index, thread-safe, persist/load
+│   │   │   ├── retriever.py               ← HybridRetriever: RRF fusion, cross-encoder rerank, HyDE expansion
+│   │   │   ├── pipeline.py                ← RAGPipeline singleton: index_file/dir, search, clear
+│   │   │   └── ingestor.py                ← FileIngestor: watch directory, incremental re-index
+│   │   │
+│   │   ├── kg/                            ← Reservoir Knowledge Graph (v1.3.0)
+│   │   │   ├── __init__.py                ← Public exports
+│   │   │   ├── graph.py                   ← ReservoirGraph: networkx MultiDiGraph, NodeType/EdgeType enums
+│   │   │   ├── builder.py                 ← KGBuilder: Norne base + pfproj + DB + context population
+│   │   │   ├── query_engine.py            ← KGQueryEngine: 20 regex patterns → typed graph traversal
+│   │   │   ├── serializer.py              ← Atomic JSON save/load (%APPDATA%/PhysicsFlow/kg/)
+│   │   │   └── pipeline.py                ← KGPipeline singleton: load-or-build, query, rebuild, update
 │   │   │
 │   │   ├── io/                            ← Data I/O
 │   │   │   ├── __init__.py
 │   │   │   ├── eclipse_reader.py          ← .DATA keyword + .EGRID/.UNRST binary reader
 │   │   │   ├── las_reader.py              ← LAS 2.0 parser: all sections, resample, batch read
-│   │   │   └── project.py                 ← PhysicsFlowProject: .pfproj JSON save/load
+│   │   │   ├── project.py                 ← PhysicsFlowProject: .pfproj JSON save/load + encryption
+│   │   │   └── crypto.py                  ← AES-256-GCM: encrypt/decrypt/is_encrypted, PFEC format
+│   │   │
+│   │   ├── training/                      ← PINO pre-training scripts
+│   │   │   └── pretrain_norne.py          ← PretrainConfig, _build_dataset(), pretrain_norne() CLI
+│   │   │
+│   │   ├── cli/                           ← Click CLI commands
+│   │   │   ├── __init__.py
+│   │   │   └── encrypt_cmd.py             ← physicsflow-encrypt / physicsflow-decrypt
 │   │   │
 │   │   ├── db/                            ← SQLite persistence layer (SQLAlchemy)
 │   │   │   ├── __init__.py                ← Public exports
@@ -267,7 +330,8 @@ PhysicsFlow/
 │   │   │       ├── Training/              ← PINO training monitor, live loss curves
 │   │   │       ├── HistoryMatching/       ← αREKI workspace, fan chart, per-well heatmap
 │   │   │       ├── Forecast/              ← P10/P50/P90 fan charts, EUR, export buttons
-│   │   │       └── AIAssistant/           ← Streaming chat, quick actions, typing indicator
+│   │   │       ├── AIAssistant/           ← Streaming chat, quick actions, typing indicator
+│   │   │       └── Visualisation/         ← 3D reservoir viewer + 2D cross-section viewer
 │   │   │
 │   │   ├── PhysicsFlow.Core/              ← Domain models + interfaces
 │   │   ├── PhysicsFlow.ViewModels/        ← MVVM ViewModels
@@ -276,9 +340,15 @@ PhysicsFlow/
 │   │   │   ├── ForecastViewModel.cs       ← Fan charts, EUR stats, export commands
 │   │   │   └── ProjectSetupViewModel.cs   ← 5-step wizard, COMPDAT import, .pfproj save
 │   │   │
-│   │   └── PhysicsFlow.Infrastructure/    ← gRPC client, engine manager, database layer
+│   │   └── PhysicsFlow.Infrastructure/    ← gRPC client, engine manager, reports, export, DB
 │   │       ├── Engine/EngineManager.cs    ← Python process lifecycle, engine.ready signal
 │   │       ├── Agent/OllamaAgentClient.cs ← gRPC streaming chat client
+│   │       ├── Reports/                   ← QuestPDF report generation
+│   │       │   ├── IReportService.cs      ← HM summary + EUR report interfaces
+│   │       │   └── ReportService.cs       ← QuestPDF Community: tables, charts, disclaimer
+│   │       ├── Export/                    ← ClosedXML Excel export
+│   │       │   ├── IExcelExportService.cs ← Well data, ensemble stats, training history interfaces
+│   │       │   └── ExcelExportService.cs  ← Multi-sheet workbooks with styled headers
 │   │       └── Data/                      ← EF Core read layer (shared SQLite)
 │   │           ├── PhysicsFlowDbContext.cs← EF Core DbContext: 7 DbSets, indexes, FK cascade
 │   │           ├── AppDbService.cs        ← Async UI query service (projects, runs, HM, wells)
@@ -479,7 +549,7 @@ All PVT functions are differentiable PyTorch operations:
 ### Production Installer (end users)
 
 ```
-PhysicsFlow-Installer-1.1.0-x64.exe
+PhysicsFlow-Installer-1.3.0-x64.exe
   ├── .NET 8 Desktop Runtime    (auto-installed if missing)
   ├── Visual C++ 2022 x64       (auto-installed if missing)
   ├── PhysicsFlow.msi
@@ -528,9 +598,9 @@ pytest tests/ -v
 ```powershell
 # Requires: WiX v4 (dotnet tool install --global wix), .NET 8 SDK
 cd installer
-.\build.ps1 -Configuration Release -Version 1.1.0
-# Output: PhysicsFlow-Setup-1.1.0-x64.msi
-#         PhysicsFlow-Installer-1.1.0-x64.exe
+.\build.ps1 -Configuration Release -Version 1.3.0
+# Output: PhysicsFlow-Setup-1.3.0-x64.msi
+#         PhysicsFlow-Installer-1.3.0-x64.exe
 ```
 
 ---
@@ -587,7 +657,11 @@ Type any question about your reservoir:
 
 ## AI Reservoir Assistant
 
-The built-in assistant (Ollama + local LLM) calls live simulation data before answering.
+The built-in assistant (Ollama + local LLM) is grounded by **three complementary layers**:
+
+1. **Live tool calls** — real-time simulation state (8 tools)
+2. **Reservoir Knowledge Graph** — structured facts about Norne topology, wells, faults, parameters
+3. **Hybrid RAG** — indexed project documents, well reports, technical papers
 
 ### Example Conversations
 
@@ -601,24 +675,53 @@ breakdown shows E-3H is the highest contributor to mismatch at RMSE 0.043.
 reference by more than 20%. This may indicate local permeability overestimation
 in the southeast fault block.
 
+**User:** Which layers does well B-2H perforate?
+**AI (KG):** Well B-2H perforates layers K9, K10, K11, K12 — located in segment B
+(Central main segment, highest STOIIP).
+
+**User:** Which injectors support producers in segment C?
+**AI (KG):** Injectors C-4AH and C-4H support producers C-1H, C-2H, C-3H, and K-3H
+in segment C via pressure maintenance.
+
+**User:** What parameters most influence WWCT?
+**AI (KG):** The parameters that most influence WWCT are: kr_oil, kr_water.
+
 **User:** Explain the VCAE latent space encoding.
-**AI:** The VCAE maps each permeability field (46×112×22 cells) to a compact 256-dimensional
+**AI (RAG):** The VCAE maps each permeability field (46×112×22 cells) to a compact 256-dimensional
 Gaussian latent vector z. This means αREKI updates 256 parameters per ensemble member
 instead of 113,344, and the Gaussian assumption required by Kalman methods is valid
 in latent space. The DDIM decoder then maps z back to a geologically realistic K field...
 
 ### Agent Tools
 
-| Tool | What It Does |
-|---|---|
-| `get_simulation_status()` | Current run state, progress %, ETA |
-| `get_well_performance(well_name)` | WOPR / WWPR / WGPR time series + chart data |
-| `get_hm_iteration_summary()` | αREKI convergence metrics per iteration + chart |
-| `get_ensemble_statistics(quantity, well)` | P10/P50/P90 fan chart data |
-| `get_data_mismatch_per_well()` | Per-well RMSE breakdown |
-| `get_field_property(prop, i, j, k)` | Local K/φ/pressure/Sw at grid cell |
-| `explain_parameter(name)` | Built-in knowledge base (14 reservoir engineering parameters) |
-| `get_project_summary()` | Full project metadata, model paths, HM results |
+| Tool | Layer | What It Does |
+|---|---|---|
+| `get_simulation_status()` | Live | Current run state, progress %, ETA |
+| `get_well_performance(well_name)` | Live | WOPR / WWPR / WGPR time series + chart data |
+| `get_hm_iteration_summary()` | Live | αREKI convergence metrics per iteration + chart |
+| `get_ensemble_statistics(quantity, well)` | Live | P10/P50/P90 fan chart data |
+| `get_data_mismatch_per_well()` | Live | Per-well RMSE breakdown |
+| `get_field_property(prop, i, j, k)` | Live | Local K/φ/pressure/Sw at grid cell |
+| `explain_parameter(name)` | Live | Built-in knowledge base (14 reservoir engineering parameters) |
+| `get_project_summary()` | Live | Full project metadata, model paths, HM results |
+| `query_reservoir_graph(question)` | KG | 20-pattern NL query over reservoir topology graph |
+| `search_project_knowledge(query, top_k)` | RAG | Hybrid semantic search over indexed project documents |
+
+### Indexing Documents for RAG
+
+Drop any project document into the watch folder and it is auto-indexed:
+
+```python
+from physicsflow.rag import RAGPipeline
+
+rag = RAGPipeline.instance()
+rag.index_file("reports/Norne_field_study.pdf")      # PDF
+rag.index_file("data/B-2H.las")                      # LAS well log
+rag.index_directory("docs/")                         # whole folder
+print(f"Indexed: {rag.count()} chunks")
+```
+
+Supported formats: PDF, Word (.docx), plain text, CSV, LAS 2.0, Eclipse .DATA keywords.
 
 ---
 
@@ -628,7 +731,7 @@ PhysicsFlow uses `.pfproj` (JSON) as its native project format.
 
 ```json
 {
-  "version": "1.1.0",
+  "version": "1.3.0",
   "name": "Norne Q4 2024",
   "created": "2024-11-01T12:00:00",
   "modified": "2024-11-15T09:30:00",
@@ -731,12 +834,12 @@ pytest tests/ -m "not slow" -v
 
 ## Competitive Positioning
 
-| Feature | PhysicsFlow v1.1 | REVEAL (Intersect) | Petex IPM Suite | CMG IMEX |
+| Feature | PhysicsFlow v1.3 | REVEAL (Intersect) | Petex IPM Suite | CMG IMEX |
 |---|---|---|---|---|
 | History matching speed | **~7 sec/run (PINO)** | Hours | Hours | Hours |
 | History matching method | αREKI ensemble | Manual / ES-MDA | Manual | Manual |
 | Generative priors | **VCAE + DDIM** | None | None | None |
-| AI assistant | **Local LLM (Ollama)** | None | None | None |
+| AI assistant | **Local LLM + RAG + KG** | None | None | None |
 | License cost | **$15k/yr (SaaS)** | $150k–$400k/yr | $80k–$200k/yr | $120k–$350k/yr |
 | Deployment | **Desktop + installer** | Cloud / HPC | Desktop | Desktop/HPC |
 | Open source physics | **OPM FLOW reference** | Proprietary | Proprietary | Proprietary |
@@ -777,7 +880,7 @@ pytest tests/ -m "not slow" -v
 - [x] Shared SQLite DB path (%APPDATA%\PhysicsFlow\physicsflow.db) — zero-config cross-process access
 - [x] Private GitHub repository: https://github.com/Danny024/PhysicsFlow
 
-### v1.2.0 — Visualisation & Reports ✅ Complete (this release)
+### v1.2.0 — Visualisation & Reports ✅ Complete
 
 - [x] Helix Toolkit 3D reservoir viewer (P, Sw, K animated) — `ReservoirView3D.xaml` + `ReservoirView3DViewModel.cs`
 - [x] 2D cross-section viewer (I/J/K planes) — `CrossSectionView.xaml` + `CrossSectionViewModel.cs` (WriteableBitmap, 4 colourmaps)
@@ -786,6 +889,24 @@ pytest tests/ -m "not slow" -v
 - [x] Real gRPC stub generation in CI/CD pipeline — `.github/workflows/ci.yml` (python-engine + dotnet-desktop + lint + security jobs)
 - [x] PINO pre-training on Norne reference dataset — `training/pretrain_norne.py` (`physicsflow-pretrain` CLI)
 - [x] AES-256-GCM project file encryption — `io/crypto.py` + `cli/encrypt_cmd.py` (PBKDF2-HMAC-SHA256, 600k iterations)
+
+### v1.3.0 — Intelligence Layer ✅ Complete (this release)
+
+- [x] Hybrid RAG pipeline — ChromaDB dense vector search + BM25 sparse index + RRF fusion
+- [x] BAAI/bge-small-en-v1.5 embeddings (512-dim, BGE instruction prefix for query-time quality)
+- [x] Cross-encoder reranking — `cross-encoder/ms-marco-MiniLM-L-6-v2` for top-k precision
+- [x] Multi-query and HyDE (Hypothetical Document Embedding) query expansion
+- [x] Document processor — PDF (PyMuPDF), Word (.docx), TXT/CSV/LAS/Eclipse .DATA
+- [x] RAG tool exposed to LLM — `search_project_knowledge(query, top_k)` with source attribution
+- [x] Reservoir Knowledge Graph — `networkx.MultiDiGraph` with 9 NodeTypes and 8 EdgeTypes
+- [x] Norne pre-population — 22 layers, 17 producers, 5 injectors, 53 faults, 5 segments, injector-producer support pairs, uncertain parameter graph
+- [x] KG 4-source builder — base structural → pfproj enrichment → SQLite sync → live context RMSE
+- [x] 20-pattern NL query engine — deterministic regex dispatch to typed graph traversal methods
+- [x] `query_reservoir_graph` agent tool — zero-latency structured KG answers
+- [x] KG auto-injection into system prompt — matching queries answered from graph before LLM reasoning
+- [x] JSON persistence for KG — atomic save via `.tmp` → rename, `%APPDATA%\PhysicsFlow\kg\`
+- [x] networkx dependency added to `pyproject.toml` (RAG group)
+- [x] Bug fixes: SyntaxError in `layers_of_well()`, wrong `get_session()` call, `hashlib` import order, dead code removal
 
 ### v2.0 — Cloud & API
 

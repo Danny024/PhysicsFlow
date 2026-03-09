@@ -19,7 +19,7 @@ who interprets the data in context of the active project.
 from __future__ import annotations
 import json
 import time
-from typing import Generator, Any
+from typing import Generator, Any, Optional
 from loguru import logger
 
 try:
@@ -31,6 +31,22 @@ except ImportError:
 
 from .tools import ReservoirTools, TOOL_DEFINITIONS
 from .context_provider import ReservoirContextProvider
+
+# RAG pipeline — imported lazily to avoid startup cost when not needed
+try:
+    from physicsflow.rag.pipeline import RAGPipeline
+    _HAS_RAG = True
+except Exception:
+    _HAS_RAG = False
+    logger.info("RAG pipeline unavailable (install chromadb + sentence-transformers)")
+
+# Knowledge graph
+try:
+    from physicsflow.kg.pipeline import KGPipeline
+    _HAS_KG = True
+except Exception:
+    _HAS_KG = False
+    logger.info("Knowledge graph unavailable (install networkx)")
 
 
 SYSTEM_PROMPT = """You are PhysicsFlow Assistant, an expert reservoir engineering AI
@@ -74,11 +90,19 @@ class ReservoirAgent:
         model: str = "phi3:mini",
         context_provider: ReservoirContextProvider | None = None,
         max_tool_calls: int = 5,
+        use_rag: bool = True,
+        rag_top_k: int = 5,
     ):
         self.model = model
         self.context_provider = context_provider or ReservoirContextProvider()
         self.tools = ReservoirTools(self.context_provider)
         self.max_tool_calls = max_tool_calls
+        self.use_rag  = use_rag and _HAS_RAG
+        self.rag_top_k = rag_top_k
+
+        # Lazy pipeline references (initialised on first use)
+        self._rag: Optional["RAGPipeline"] = None
+        self._kg:  Optional["KGPipeline"]  = None
 
         # Per-session conversation histories
         self._histories: dict[str, list[dict]] = {}
@@ -116,6 +140,35 @@ class ReservoirAgent:
         # Add system context about current project state
         project_summary = self.context_provider.get_project_summary()
 
+        # ── KG: inject structured graph facts for relational questions ────
+        kg_context = ""
+        try:
+            kg = self._get_kg()
+            if kg and kg.is_kg_query(message):
+                ans = kg.query(message)
+                if ans.matched and ans.answer:
+                    kg_context = (
+                        "## Knowledge Graph — Structured Reservoir Facts\n"
+                        f"{ans.answer}\n"
+                        "_Source: PhysicsFlow Reservoir Knowledge Graph_"
+                    )
+                    logger.debug("KG: injected '%s' answer", ans.query_type)
+        except Exception as e:
+            logger.warning("KG query failed: %s", e)
+
+        # ── RAG: retrieve relevant knowledge base context ──────────────────
+        rag_context = ""
+        if self.use_rag:
+            try:
+                rag = self._get_rag()
+                if rag and rag.stats()["vector_chunks"] > 0:
+                    ctx = rag.retrieve_and_build(message, top_k=self.rag_top_k)
+                    if ctx.chunk_count > 0:
+                        rag_context = rag.builder.format_for_prompt(ctx)
+                        logger.debug("RAG: injected %d chunks", ctx.chunk_count)
+            except Exception as e:
+                logger.warning("RAG retrieval failed: %s", e)
+
         # Append user message
         history.append({"role": "user", "content": message})
 
@@ -128,7 +181,9 @@ class ReservoirAgent:
             try:
                 response = ollama.chat(
                     model=self.model,
-                    messages=self._build_messages(history, project_summary),
+                    messages=self._build_messages(
+                        history, project_summary, rag_context, kg_context
+                    ),
                     tools=TOOL_DEFINITIONS,
                     stream=False,   # get full response to check for tool calls
                 )
@@ -238,10 +293,53 @@ class ReservoirAgent:
         # Keep last 20 messages to avoid context overflow
         self._histories[session_id] = history[-20:]
 
-    def _build_messages(self, history: list[dict], project_summary: str) -> list[dict]:
+    def _get_kg(self) -> Optional["KGPipeline"]:
+        """Return the shared KGPipeline, initialising it lazily."""
+        if not _HAS_KG:
+            return None
+        if self._kg is None:
+            try:
+                self._kg = KGPipeline.instance()
+            except Exception as e:
+                logger.warning("KGPipeline init failed: %s", e)
+        return self._kg
+
+    @property
+    def kg(self) -> Optional["KGPipeline"]:
+        """Expose KG pipeline for direct rebuild from outside the agent."""
+        return self._get_kg()
+
+    def _get_rag(self) -> Optional["RAGPipeline"]:
+        """Return the shared RAGPipeline, initialising it lazily."""
+        if not _HAS_RAG:
+            return None
+        if self._rag is None:
+            try:
+                self._rag = RAGPipeline.instance(llm_model=self.model)
+            except Exception as e:
+                logger.warning("RAGPipeline init failed: %s", e)
+        return self._rag
+
+    @property
+    def rag(self) -> Optional["RAGPipeline"]:
+        """Expose RAG pipeline for direct indexing from outside the agent."""
+        return self._get_rag()
+
+    def _build_messages(
+        self,
+        history: list[dict],
+        project_summary: str,
+        rag_context: str = "",
+        kg_context: str = "",
+    ) -> list[dict]:
         system_with_context = SYSTEM_PROMPT
         if project_summary:
             system_with_context += f"\n\n## Active Project Context\n{project_summary}"
+        if kg_context:
+            # KG facts come first — they are precise and authoritative
+            system_with_context += f"\n\n{kg_context}"
+        if rag_context:
+            system_with_context += f"\n\n{rag_context}"
 
         return [
             {"role": "system", "content": system_with_context},

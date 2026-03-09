@@ -246,7 +246,7 @@ add_body(doc, 'The AI-Native Reservoir Simulation Platform',
 add_divider(doc, color='1565C0')
 
 add_body(doc,
-    'Physics-Informed Neural Operator  ·  Ensemble History Matching  ·  Built-in AI Assistant',
+    'Physics-Informed Neural Operator  ·  Ensemble History Matching  ·  3D Visualisation  ·  RAG + Knowledge Graph AI',
     color=CYAN, size=11, italic=True, space_before=4, space_after=16, center=True)
 
 # Key stats table
@@ -946,32 +946,42 @@ doc.add_page_break()
 # ══════════════════════════════════════════════════════════════════════════════
 
 add_slide_header(doc, 12, 16, '🗺️  PRODUCT ROADMAP', CYAN)
-add_heading(doc, '18-Month Build Plan', color=NAVY, size=28, space_before=0, space_after=4)
-add_body(doc, 'From validated research prototype to full commercial product ready for the oil and gas market.',
+add_heading(doc, 'Build Plan — From Prototype to Platform', color=NAVY, size=28, space_before=0, space_after=4)
+add_body(doc, 'Three production versions shipped. Research-grade AI intelligence now embedded in the core product.',
          color=DARK_GREY, size=11, italic=True, space_before=0, space_after=8)
 
-rm = make_table(doc, 1, 4,
-    col_widths=[CONTENT_WIDTH//4 - Cm(0.2)] * 4)
+rm = make_table(doc, 1, 5,
+    col_widths=[CONTENT_WIDTH//5 - Cm(0.1)] * 5)
 rm_data = [
-    ('✅  Now — Foundation', CYAN, 'D6EAF8', [
-        'Python gRPC engine', 'JAX αREKI (3–5× faster)', 'Ollama AI assistant',
-        '.NET 8 WPF desktop shell', 'Protocol Buffer API contracts',
-        'PVT + well model (config-driven)', 'Dashboard + HM + Training views', 'AI chat panel',
+    ('✅  Shipped — v1.1 Foundation', CYAN, 'D6EAF8', [
+        'Python gRPC engine + JAX αREKI', 'Ollama AI assistant (8 live tools)',
+        '.NET 8 WPF desktop — full MVVM', 'Protocol Buffer bidirectional streaming',
+        'PVT + well model (config-driven)', 'Dashboard + HM + Training views',
+        'Eclipse .DATA/.EGRID/.UNRST reader', 'VCAE + DDIM priors, CCR well model',
     ]),
-    ('🔄  Q2 2025 — v1.1 Complete', GREEN, 'D5F5E3', [
-        'FNO surrogate (PyTorch)', 'PINO training service', 'Eclipse deck reader (.DATA/.EGRID)',
-        'VCAE + DDIM priors', 'CCR well model (XGBoost)', '3D field viewer (Helix Toolkit)',
-        'PDF / Excel report export', 'WiX professional installer',
+    ('✅  Shipped — v1.2 Production', GREEN, 'D5F5E3', [
+        '3D reservoir viewer (HelixToolkit)', '2D I/J/K cross-section viewer',
+        'QuestPDF HM reports + EUR export', 'ClosedXML Excel ensemble export',
+        'AES-256-GCM project encryption', 'PINO pre-training CLI (Norne)',
+        'GitHub Actions CI/CD + WiX', 'SQLite DB — Python + EF Core',
     ]),
-    ('🔮  Q4 2025 — v1.2 Production', AMBER, 'FFF9E6', [
-        'Compositional PVT (EOS)', 'Horizontal / multilateral wells', 'Surface network (lite)',
-        'Multi-user project sharing', 'REST API for integrations', 'Cloud deployment (SaaS)',
-        'Audit trail — ISO 9001 path', 'Auto-update delivery system',
+    ('✅  Shipped — v1.3 Intelligence', RGBColor(0x7B, 0x1F, 0xA2), 'F3E5F5', [
+        'Hybrid RAG (ChromaDB + BM25)', 'Cross-encoder reranking (MiniLM)',
+        'Multi-query HyDE expansion', 'Reservoir Knowledge Graph (networkx)',
+        '20-pattern NL query engine', 'Index PDFs / LAS / CSV / reports',
+        'query_reservoir_graph tool', 'search_project_knowledge tool',
     ]),
-    ('🚀  2026 — v2.0 Platform', BLUE, 'EBF5FB', [
-        'Geomechanics coupling', 'Thermal / EOR simulation', 'Eclipse 100/300 bridge API',
-        'Pre-trained surrogate marketplace', 'Transfer learning (new fields in <30min)',
-        'Multi-GPU distributed training', 'SPE reserve certification ready', 'Petrel plugin',
+    ('🔮  Q3 2026 — v1.4 Enterprise', AMBER, 'FFF9E6', [
+        'Compositional PVT (EOS)', 'Horizontal / multilateral wells',
+        'Multi-user project sharing', 'REST API for integrations',
+        'Cloud deployment (SaaS)', 'Audit trail — ISO 9001 path',
+        'Surface network (lite)', 'Auto-update delivery system',
+    ]),
+    ('🚀  2027 — v2.0 Platform', BLUE, 'EBF5FB', [
+        'Geomechanics coupling', 'Thermal / EOR simulation',
+        'Eclipse 100/300 bridge API', 'Pre-trained surrogate marketplace',
+        'Transfer learning (<30 min)', 'Multi-GPU distributed training',
+        'SPE reserve certification', 'Petrel plugin',
     ]),
 ]
 
@@ -1158,7 +1168,7 @@ milestones = make_table(doc, 1, 3,
 ms_data = [
     ('30 Customers', 'Target by Month 18', CYAN, 'D6EAF8'),
     ('$2.1M ARR', 'Series A Milestone', GREEN, 'D5F5E3'),
-    ('v1.2 Shipped', 'Full Production-Ready Product', AMBER, 'FFF9E6'),
+    ('v1.3 Shipped', 'RAG + Knowledge Graph Intelligence', AMBER, 'FFF9E6'),
 ]
 for j, (num, label, col, bg) in enumerate(ms_data):
     c = milestones.cell(0, j)
@@ -1228,6 +1238,6 @@ for j, (label, val, col, bg) in enumerate(contact_data):
 
 
 # ── Save ──────────────────────────────────────────────────────────────────────
-output = r'C:\Users\danie\OneDrive\Reservoir_Simulator\PhysicsFlow\PhysicsFlow_PitchDeck.docx'
+output = r'C:\Users\danie\OneDrive\Reservoir_Simulator\PhysicsFlow\PhysicsFlow_PitchDeck_v130.docx'
 doc.save(output)
 print(f'Saved: {output}')

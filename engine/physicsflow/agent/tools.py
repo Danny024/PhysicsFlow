@@ -13,6 +13,18 @@ import json
 from typing import Any
 from .context_provider import ReservoirContextProvider
 
+try:
+    from physicsflow.rag.pipeline import RAGPipeline as _RAGPipeline
+    _HAS_RAG = True
+except Exception:
+    _HAS_RAG = False
+
+try:
+    from physicsflow.kg.pipeline import KGPipeline as _KGPipeline
+    _HAS_KG = True
+except Exception:
+    _HAS_KG = False
+
 
 # ── Ollama tool definitions (OpenAI-compatible function schema) ───────────────
 
@@ -136,6 +148,70 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["parameter"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_reservoir_graph",
+            "description": (
+                "Query the reservoir knowledge graph for structured relational facts: "
+                "well completions (perforation layers), segment membership, injector–producer "
+                "support relationships, fault–segment boundaries, uncertain parameters, "
+                "and simulation run convergence. Use this for questions about reservoir "
+                "topology, well connectivity, and structural relationships — not for "
+                "time-series production data (use get_well_performance for that)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": (
+                            "Natural language question about reservoir structure, e.g.: "
+                            "'Which wells perforate layer K-9?', "
+                            "'Which injectors support B-2H?', "
+                            "'What segment is D-3BH in?', "
+                            "'Which faults bound segment C?', "
+                            "'Which runs converged?'"
+                        ),
+                    },
+                },
+                "required": ["question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_project_knowledge",
+            "description": (
+                "Search the project knowledge base (indexed PDFs, well logs, reports, "
+                "project files, and previous analyses) using hybrid semantic + keyword "
+                "retrieval. Use this to find relevant background information, technical "
+                "reports, LAS well data, or prior history matching results."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language search query, e.g. 'permeability uncertainty B-2H'",
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "description": (
+                            "Optional filter: 'pdf', 'las', 'csv', 'pfproj', "
+                            "'text', 'audit', 'chat'. Omit to search all."
+                        ),
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results to return (default: 5, max: 10)",
+                    },
+                },
+                "required": ["query"],
             },
         },
     },
@@ -450,6 +526,69 @@ class ReservoirTools:
             }
 
         return {"parameter": parameter, "explanation": explanation}
+
+    def query_reservoir_graph(self, question: str) -> dict:
+        """
+        Query the reservoir knowledge graph for structural/relational facts.
+        Returns a structured answer with entity names and supporting data.
+        """
+        if not _HAS_KG:
+            return {"error": "Knowledge graph not available. Install networkx."}
+        try:
+            kg  = _KGPipeline.instance()
+            ans = kg.query(question)
+            if not ans.matched:
+                return {
+                    "message": (
+                        "The knowledge graph does not have a pattern for this question. "
+                        "Try asking about: well perforations, segment membership, "
+                        "injector support, fault boundaries, or converged runs."
+                    ),
+                    "question": question,
+                    "kg_stats": kg.stats(),
+                }
+            return {
+                "answer":     ans.answer,
+                "entities":   ans.entities,
+                "query_type": ans.query_type,
+                "confidence": ans.confidence,
+                "data":       ans.data,
+            }
+        except Exception as e:
+            return {"error": f"Knowledge graph query failed: {e}"}
+
+    def search_project_knowledge(
+        self,
+        query: str,
+        source_type: str | None = None,
+        top_k: int = 5,
+    ) -> dict:
+        """
+        Hybrid RAG search over indexed project knowledge base.
+        Returns relevant text snippets with source citations.
+        """
+        if not _HAS_RAG:
+            return {"error": "RAG pipeline not available. Install chromadb and sentence-transformers."}
+        try:
+            rag = _RAGPipeline.instance()
+            if rag.stats()["vector_chunks"] == 0:
+                return {
+                    "message": "Knowledge base is empty. Index project files first.",
+                    "hint": "Use the document indexer to add PDFs, LAS files, or reports.",
+                }
+            k = min(max(1, top_k), 10)
+            ctx = rag.retrieve_and_build(query, top_k=k, source_type=source_type or None)
+            if ctx.chunk_count == 0:
+                return {"message": "No relevant documents found for this query.", "query": query}
+            return {
+                "query":      query,
+                "chunks_found": ctx.chunk_count,
+                "sources":    ctx.sources,
+                "context":    ctx.context_block,
+                "citations":  ctx.citations,
+            }
+        except Exception as e:
+            return {"error": f"Knowledge base search failed: {e}"}
 
     def get_project_summary(self) -> dict:
         return self.ctx.get_project_summary_dict()

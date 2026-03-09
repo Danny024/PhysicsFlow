@@ -20,6 +20,7 @@ import uuid
 from typing import Optional
 
 from .database import init_db, get_session
+from .models import Project, SimulationRun
 from .repositories import AuditRepo, HMRepo, ModelRepo, ProjectRepo, RunRepo
 
 log = logging.getLogger(__name__)
@@ -56,9 +57,7 @@ class DatabaseService:
     def update_project_grid(self, project_id: str, nx: int, ny: int, nz: int,
                              n_wells: int = 0) -> None:
         with get_session() as db:
-            proj = db.get(ProjectRepo.__class__, project_id)
-            proj = db.query(__import__("physicsflow.db.models", fromlist=["Project"])
-                             .Project).get(project_id)
+            proj = db.get(Project, project_id)
             if proj:
                 proj.nx, proj.ny, proj.nz, proj.n_wells = nx, ny, nz, n_wells
 
@@ -86,10 +85,7 @@ class DatabaseService:
     def complete_run(self, run_id: str, **metrics) -> None:
         with get_session() as db:
             RunRepo.complete(db, run_id=run_id, **metrics)
-            run = db.get(
-                __import__("physicsflow.db.models", fromlist=["SimulationRun"])
-                .SimulationRun, run_id
-            )
+            run = db.get(SimulationRun, run_id)
             if run:
                 AuditRepo.log(db, "run.completed",
                                f"{run.run_type.upper()} run completed in "
@@ -102,10 +98,7 @@ class DatabaseService:
     def fail_run(self, run_id: str, error: str, tb: str = "") -> None:
         with get_session() as db:
             RunRepo.fail(db, run_id=run_id, error=error, tb=tb)
-            run = db.get(
-                __import__("physicsflow.db.models", fromlist=["SimulationRun"])
-                .SimulationRun, run_id
-            )
+            run = db.get(SimulationRun, run_id)
             if run:
                 AuditRepo.log(db, "run.failed", f"Run failed: {error[:200]}",
                                project_id=run.project_id,
