@@ -17,10 +17,15 @@
                 Background="#1565C0"
                 CornerRadius="12,12,2,12"
                 Padding="12,8">
-            <TextBlock Text="{Binding Content}"
-                       Foreground="White"
-                       FontSize="13"
-                       TextWrapping="Wrap"/>
+            <TextBox Text="{Binding Content, Mode=OneWay}"
+                     Foreground="White"
+                     FontSize="13"
+                     TextWrapping="Wrap"
+                     IsReadOnly="True"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     Padding="0"
+                     Cursor="IBeam"/>
         </Border>
 
         <!-- Assistant bubble -->
@@ -32,10 +37,15 @@
                 CornerRadius="12,12,12,2"
                 Padding="12,8">
             <StackPanel>
-                <TextBlock Text="{Binding Content}"
-                           Foreground="#E8E8F0"
-                           FontSize="13"
-                           TextWrapping="Wrap"/>
+                <TextBox Text="{Binding Content, Mode=OneWay}"
+                         Foreground="#E8E8F0"
+                         FontSize="13"
+                         TextWrapping="Wrap"
+                         IsReadOnly="True"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Padding="0"
+                         Cursor="IBeam"/>
 
                 <!-- Tool call indicator -->
                 <TextBlock Text="🔧 Tool called"
