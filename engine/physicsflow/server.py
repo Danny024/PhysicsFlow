@@ -43,13 +43,15 @@ def create_server(
     try:
         from .proto import simulation_pb2_grpc, history_matching_pb2_grpc, agent_pb2_grpc
         stubs_available = True
-    except ImportError:
+    except (ImportError, RuntimeError) as exc:
         logger.warning(
-            "gRPC stubs not generated yet. Run:\n"
+            "gRPC stubs unavailable (%s). To regenerate run:\n"
+            "  pip install grpcio-tools\n"
             "  python -m grpc_tools.protoc -I physicsflow/proto "
             "--python_out=physicsflow/proto "
             "--grpc_python_out=physicsflow/proto "
-            "physicsflow/proto/*.proto"
+            "physicsflow/proto/*.proto",
+            exc,
         )
         stubs_available = False
 

@@ -1,0 +1,42 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:PhysicsFlow.ViewModels;assembly=PhysicsFlow.ViewModels"
+                    xmlns:dashboard="clr-namespace:PhysicsFlow.App.Views.Dashboard"
+                    xmlns:ps="clr-namespace:PhysicsFlow.App.Views.ProjectSetup"
+                    xmlns:training="clr-namespace:PhysicsFlow.App.Views.Training"
+                    xmlns:hm="clr-namespace:PhysicsFlow.App.Views.HistoryMatching"
+                    xmlns:forecast="clr-namespace:PhysicsFlow.App.Views.Forecast"
+                    xmlns:vis="clr-namespace:PhysicsFlow.App.Views.Visualisation">
+
+    <!-- Implicit DataTemplates — map each ViewModel → its View.
+         Defined at Application level so ContentControl can always find them. -->
+
+    <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+        <dashboard:DashboardView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:ProjectSetupViewModel}">
+        <ps:ProjectSetupView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:TrainingViewModel}">
+        <training:TrainingView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:HistoryMatchingViewModel}">
+        <hm:HistoryMatchingView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:ForecastViewModel}">
+        <forecast:ForecastView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:ReservoirView3DViewModel}">
+        <vis:ReservoirView3D />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:CrossSectionViewModel}">
+        <vis:CrossSectionView />
+    </DataTemplate>
+
+</ResourceDictionary>

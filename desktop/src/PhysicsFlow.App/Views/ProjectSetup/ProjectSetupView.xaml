@@ -276,9 +276,9 @@
                                     </Grid>
                                     <TextBlock Margin="0,12,0,0" Foreground="#8899AA" FontSize="11">
                                         <Run Text="Total cells: "/>
-                                        <Run Text="{Binding TotalCells, StringFormat={}{0:N0}}" Foreground="#00D4FF"/>
+                                        <Run Text="{Binding TotalCells, StringFormat={}{0:N0}, Mode=OneWay}" Foreground="#00D4FF"/>
                                         <Run Text="  |  Active cells: "/>
-                                        <Run Text="{Binding ActiveCells, StringFormat={}{0:N0}}" Foreground="#00CC66"/>
+                                        <Run Text="{Binding ActiveCells, StringFormat={}{0:N0}, Mode=OneWay}" Foreground="#00CC66"/>
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
@@ -340,11 +340,11 @@
                                         </DataGrid.Columns>
                                     </DataGrid>
                                     <TextBlock Margin="0,8,0,0" Foreground="#8899AA" FontSize="11">
-                                        <Run Text="{Binding WellCount}" Foreground="#00D4FF"/>
+                                        <Run Text="{Binding WellCount, Mode=OneWay}" Foreground="#00D4FF"/>
                                         <Run Text=" wells configured  |  "/>
-                                        <Run Text="{Binding ProducerCount}" Foreground="#00CC66"/>
+                                        <Run Text="{Binding ProducerCount, Mode=OneWay}" Foreground="#00CC66"/>
                                         <Run Text=" producers  |  "/>
-                                        <Run Text="{Binding InjectorCount}" Foreground="#4488FF"/>
+                                        <Run Text="{Binding InjectorCount, Mode=OneWay}" Foreground="#4488FF"/>
                                         <Run Text=" injectors"/>
                                     </TextBlock>
                                 </StackPanel>

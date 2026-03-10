@@ -110,11 +110,19 @@ class AgentServicer:
         try:
             import ollama
             resp = ollama.Client(host=self.cfg.ollama_host).list()
-            names = [m['name'] for m in resp.get('models', [])]
-        except Exception:
+            # ollama SDK >= 0.3 returns an object with .models list of objects (.model attr)
+            # older versions return a dict with 'models' list of dicts ('name' key)
+            raw = getattr(resp, 'models', None) or resp.get('models', [])
+            names = []
+            for m in raw:
+                name = getattr(m, 'model', None) or m.get('name') or m.get('model', '')
+                if name:
+                    names.append(name)
+        except Exception as exc:
+            log.warning("ListModels failed: %s", exc)
             names = [self.cfg.default_llm_model]
 
-        return pb.ListModelsResponse(model_names=names)
+        return pb.ListModelsResponse(models=names)
 
     # ── SetModel ──────────────────────────────────────────────────────────
 
@@ -122,7 +130,7 @@ class AgentServicer:
         agent = self._get_agent()
         agent.model = request.model_name
         log.info("Switched to model: %s", request.model_name)
-        return pb.SetModelResponse(success=True, active_model=request.model_name)
+        return pb.SetModelResponse(success=True, message=request.model_name)
 
     # ── ClearHistory ──────────────────────────────────────────────────────
 
@@ -137,11 +145,12 @@ class AgentServicer:
     def GetToolLog(self, request, context):
         agent = self._get_agent()
         entries = agent.tool_log[-50:]   # last 50 tool calls
-        return pb.ToolLogResponse(entries=[
-            pb.ToolLogEntry(
+        return pb.ToolLogResponse(calls=[
+            pb.ToolCall(
                 tool_name=e.get('tool', ''),
+                arguments=str(e.get('args', '')),
+                result=str(e.get('result', ''))[:200],
                 timestamp=str(e.get('ts', '')),
-                result_summary=str(e.get('result', ''))[:200],
             )
             for e in entries
         ])

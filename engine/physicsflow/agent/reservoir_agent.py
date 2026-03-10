@@ -188,9 +188,32 @@ class ReservoirAgent:
                     stream=False,   # get full response to check for tool calls
                 )
             except Exception as e:
-                logger.error(f"Ollama error: {e}")
-                yield {"token": f"\n[Error: {e}]", "is_done": True, "full_response": str(e)}
-                return
+                err = str(e)
+                # Some models (phi3:mini, deepseek-r1, etc.) don't support tool-calling.
+                # Fall back to plain chat so the user still gets a response.
+                if "does not support tools" in err or (
+                    "status code: 400" in err and "tool" in err.lower()
+                ):
+                    logger.warning(
+                        "Model '%s' does not support tools — retrying without tool definitions.",
+                        self.model,
+                    )
+                    try:
+                        response = ollama.chat(
+                            model=self.model,
+                            messages=self._build_messages(
+                                history, project_summary, rag_context, kg_context
+                            ),
+                            stream=False,
+                        )
+                    except Exception as e2:
+                        logger.error(f"Ollama error (no-tools fallback): {e2}")
+                        yield {"token": f"\n[Error: {e2}]", "is_done": True, "full_response": str(e2)}
+                        return
+                else:
+                    logger.error(f"Ollama error: {e}")
+                    yield {"token": f"\n[Error: {e}]", "is_done": True, "full_response": str(e)}
+                    return
 
             msg = response.message
 

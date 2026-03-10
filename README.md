@@ -3,7 +3,7 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v2.0.0** — Released 2026-03-09
+**Current version: v2.0.1** — Released 2026-03-10
 
 ---
 
@@ -63,7 +63,7 @@ Key innovations over the paper:
 | Uncertainty quantification | Ensemble P10/P50/P90 with VCAE + DDIM generative priors |
 | Well model | CCR (Cluster-Classify-Regress) XGBoost mixture of experts |
 | Speed-up | ~6,000× vs OPM FLOW on the Norne 46×112×22 benchmark |
-| AI assistant | Local LLM (Ollama phi3:mini) with 10 live reservoir tool calls |
+| AI assistant | Local LLM (Ollama `deepseek-r1:1.5b` default) with 10 live reservoir tool calls + tool-call fallback for non-tool-capable models |
 | Hybrid RAG | ChromaDB dense + BM25 sparse + RRF fusion + cross-encoder reranking |
 | Knowledge graph | Reservoir KG (networkx): 22 layers, 22 wells, 53 faults, 5 segments, 20-pattern NL query |
 | Input formats | Eclipse .DATA / .EGRID / .UNRST, OPM, LAS 2.0 well logs, .pfproj |
@@ -544,7 +544,7 @@ All PVT functions are differentiable PyTorch operations:
 
 - Windows 10/11 (64-bit, build 19041+)
 - NVIDIA GPU recommended (CUDA 12.x) — CPU fallback supported
-- Ollama installed locally for AI assistant (`ollama pull phi3:mini`)
+- Ollama installed locally for AI assistant (`ollama pull deepseek-r1:1.5b`)
 
 ### Production Installer (end users)
 
@@ -576,8 +576,8 @@ pip install -e ".[dev]"         # installs torch, jax, grpcio, ollama, xgboost, 
 cd physicsflow/proto
 python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. *.proto
 
-# 4. Pull Ollama model for AI assistant
-ollama pull phi3:mini
+# 4. Pull Ollama model for AI assistant (default — supports tool-calling)
+ollama pull deepseek-r1:1.5b
 
 # 5. Start Python gRPC engine
 python -m physicsflow.server --port 50051 --log-level INFO
@@ -659,9 +659,32 @@ Type any question about your reservoir:
 
 The built-in assistant (Ollama + local LLM) is grounded by **three complementary layers**:
 
-1. **Live tool calls** — real-time simulation state (8 tools)
+1. **Live tool calls** — real-time simulation state (10 tools)
 2. **Reservoir Knowledge Graph** — structured facts about Norne topology, wells, faults, parameters
 3. **Hybrid RAG** — indexed project documents, well reports, technical papers
+
+### Supported Models & Tool-Calling
+
+| Model | Tool-calling | Size | Notes |
+|---|---|---|---|
+| `deepseek-r1:1.5b` | ✓ | 1.1 GB | **Default** — fast, reasoning, tool-capable |
+| `deepseek-r1:14b` | ✓ | 9.0 GB | High quality reasoning, tool-capable |
+| `llama3.1:8b` | ✓ | 4.7 GB | Strong all-rounder |
+| `qwen2.5:7b` | ✓ | 4.4 GB | Good tool use |
+| `phi3:mini` | ✗ | 2.2 GB | Chat only — auto-fallback, no live data |
+| `mistral:7b` | ✓ | 4.1 GB | Fast, reliable |
+
+Models that do not support Ollama tool-calling (e.g. `phi3:mini`) automatically fall back to
+plain-chat mode — the assistant still responds, but cannot query live simulation data.
+
+To pull the default model:
+
+```bash
+ollama pull deepseek-r1:1.5b
+```
+
+The model dropdown in the AI panel lists all **installed models first**, followed by
+14 curated suggestions. Click the status dot/refresh button to re-scan after pulling a new model.
 
 ### Example Conversations
 

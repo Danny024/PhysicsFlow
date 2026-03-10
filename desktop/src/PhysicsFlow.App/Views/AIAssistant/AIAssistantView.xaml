@@ -53,8 +53,17 @@
             <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableModels}"
                       SelectedItem="{Binding SelectedModel}"
                       FontSize="11" Height="24"/>
-            <Ellipse Grid.Column="2" Width="8" Height="8" Margin="6,0,0,0"
-                     Fill="{Binding OllamaStatusColor}" ToolTip="{Binding OllamaStatusText}"/>
+            <!-- Status dot + refresh button -->
+            <Button Grid.Column="2" Style="{StaticResource IconButtonStyle}"
+                    Command="{Binding RefreshModelsCommand}"
+                    ToolTip="{Binding OllamaStatusText}"
+                    Width="28" Height="24" Padding="0" Margin="4,0,0,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7" Fill="{Binding OllamaStatusColor}" Margin="0,0,3,0"/>
+                    <iconPacks:PackIconMaterial Kind="Refresh" Width="11" Height="11"
+                                               Foreground="{DynamicResource MahApps.Brushes.Gray5}"/>
+                </StackPanel>
+            </Button>
         </Grid>
 
         <!-- ── Quick action chips ─────────────────────────────────────── -->

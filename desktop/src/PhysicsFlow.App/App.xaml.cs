@@ -34,6 +34,13 @@ public partial class App : Application
 
         Log.Information("PhysicsFlow {Version} starting", GetType().Assembly.GetName().Version);
 
+        // Catch silent WPF / XAML dispatcher exceptions and write them to the log
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Log.Error(args.Exception, "DispatcherUnhandledException: {Message}", args.Exception.Message);
+            args.Handled = true;   // prevent crash; let user continue
+        };
+
         // Build DI host
         _host = Host.CreateDefaultBuilder()
             .UseSerilog()
@@ -58,7 +65,17 @@ public partial class App : Application
         services.AddSingleton<IExcelExportService, ExcelExportService>();
 
         // ViewModels
-        services.AddSingleton<MainWindowViewModel>();
+        services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<MainWindowViewModel>(sp =>
+        {
+            Action openSettings = () =>
+            {
+                var win = sp.GetRequiredService<PhysicsFlow.App.Views.Settings.SettingsWindow>();
+                win.Owner = System.Windows.Application.Current.MainWindow;
+                win.ShowDialog();
+            };
+            return ActivatorUtilities.CreateInstance<MainWindowViewModel>(sp, openSettings);
+        });
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<ProjectSetupViewModel>();
         services.AddTransient<TrainingViewModel>();
@@ -70,6 +87,7 @@ public partial class App : Application
 
         // Views
         services.AddSingleton<MainWindow>();
+        services.AddTransient<PhysicsFlow.App.Views.Settings.SettingsWindow>();
     }
 
     protected override async void OnExit(ExitEventArgs e)

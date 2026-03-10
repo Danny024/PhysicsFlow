@@ -339,10 +339,11 @@ body('PhysicsFlow is an AI-accelerated reservoir simulation and history matching
      'Physics-Informed Neural Operator (PINO) surrogate, achieving a ~6,000× speed-up '
      'while maintaining physical consistency via Darcy PDE loss.')
 
-body('This manual covers everything required to install, configure, and use PhysicsFlow v2.0.0 '
+body('This manual covers everything required to install, configure, and use PhysicsFlow v2.0.1 '
      'from project creation through history matching, forecasting, 3D visualisation, the '
      'Intelligence Layer — Hybrid RAG knowledge assistant and Reservoir Knowledge Graph — '
-     'plus the new v2.0.0 REST API, Docker on-premise deployment, and tNavigator Bridge.')
+     'REST API, Docker on-premise deployment, tNavigator Bridge, and the AI Assistant improvements '
+     'introduced in v2.0.1 (model dropdown, tool-call fallback, default model deepseek-r1:1.5b).')
 
 h2('1.1  Key Capabilities')
 simple_table(
@@ -396,7 +397,7 @@ simple_table(
         ('Display', '1920 × 1080', '2560 × 1440 or higher'),
         ('.NET Runtime', '.NET 8.0 Desktop Runtime', 'Bundled in installer — no manual install'),
         ('Python', 'Python 3.11 (bundled)', 'Bundled — no separate installation required'),
-        ('Ollama', 'Optional — for AI assistant', 'Ollama 0.2+ with phi3:mini pulled'),
+        ('Ollama', 'Optional — for AI assistant', 'Ollama 0.2+ with deepseek-r1:1.5b pulled (recommended)'),
         ('Docker', 'Optional — for team/on-premise deployment', 'Docker Desktop 4.x + NVIDIA Container Toolkit'),
     ],
     col_widths=[Cm(4.0), Cm(6.0), Cm(7.5)],
@@ -443,14 +444,16 @@ body('The AI Reservoir Assistant requires Ollama to be installed and running on 
      'Your data never leaves your computer — all inference is local.')
 numbered('Download Ollama from ollama.com and run the installer.')
 numbered('Open a terminal and pull the recommended model:')
-code_block('ollama pull phi3:mini')
+code_block('ollama pull deepseek-r1:1.5b')
 numbered('Verify Ollama is running:')
 code_block('ollama list')
 numbered('In PhysicsFlow, go to Settings → AI Assistant and confirm the Ollama endpoint '
          '(default: http://localhost:11434).')
 
-note('A larger model like llama3:8b will give better responses but requires 8+ GB VRAM. '
-     'phi3:mini runs well on CPU with 8 GB RAM.')
+note('deepseek-r1:1.5b (1.1 GB) is the recommended default — it supports tool-calling so the '
+     'AI assistant can query live simulation data. phi3:mini is supported but falls back to plain '
+     'chat without live data access. A larger model like deepseek-r1:14b gives better analytical '
+     'responses but requires 10+ GB VRAM.')
 
 h2('3.3  Developer Setup')
 body('For developers who want to modify the source code or run the Python engine independently:')
@@ -933,13 +936,15 @@ tip('Index your project documents in the Knowledge Base Management panel (Chapte
     'before asking document-based questions.')
 
 h2('12.6  Changing the Model')
-body('The default model is phi3:mini (3.8B parameters — fast, good for question answering). '
-     'To use a different model:')
+body('The default model is deepseek-r1:1.5b — fast, small (1.1 GB), and supports tool-calling '
+     'so the AI can query live reservoir data. To use a different model:')
 numbered('Pull the model in Ollama: ollama pull llama3:8b')
 numbered('In PhysicsFlow, go to Settings → AI Assistant → Model.')
 numbered('Select the model from the dropdown and click Apply.')
-note('A larger model like llama3:8b gives better analytical responses but requires 8+ GB VRAM. '
-     'phi3:mini runs well on CPU with 8 GB RAM and is recommended for most users.')
+note('Models that do not support Ollama tool-calling (e.g. phi3:mini) automatically fall back to '
+     'plain-chat mode — the assistant still responds but cannot query live simulation data. '
+     'The model dropdown lists installed models first, followed by curated suggestions. '
+     'Click the refresh button to re-scan after pulling a new model.')
 
 doc.add_page_break()
 
@@ -1157,7 +1162,7 @@ simple_table(
         ('Engine Startup Timeout', 'Seconds to wait for engine.ready before error', '60 s'),
         ('GPU Device', 'CUDA device index (0 = first GPU)', '0'),
         ('Ollama Endpoint', 'URL of local Ollama server', 'http://localhost:11434'),
-        ('AI Model', 'Ollama model name for AI assistant', 'phi3:mini'),
+        ('AI Model', 'Ollama model name for AI assistant', 'deepseek-r1:1.5b'),
         ('Database Path', 'SQLite database file location', '%APPDATA%\\PhysicsFlow\\physicsflow.db'),
         ('Log Level', 'Serilog log level (Verbose / Debug / Info / Warning)', 'Information'),
         ('Theme', 'MahApps.Metro dark/light theme', 'Dark'),
@@ -1495,10 +1500,10 @@ simple_table(
 )
 
 doc.add_paragraph()
-body('— End of PhysicsFlow User Manual v2.0.0 —', italic=True, color=MID_GREY)
+body('— End of PhysicsFlow User Manual v2.0.1 —', italic=True, color=MID_GREY)
 
 
 # ── Save ───────────────────────────────────────────────────────────────────────
-output_path = 'PhysicsFlow_UserManual_v200.docx'
+output_path = 'PhysicsFlow_UserManual_v201.docx'
 doc.save(output_path)
 print(f'Saved: {output_path}')

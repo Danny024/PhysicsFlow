@@ -27,7 +27,7 @@ class EngineConfig(BaseSettings):
 
     # ── Ollama / LLM ──────────────────────────────────────────────────────────
     ollama_host: str = Field(default="http://localhost:11434")
-    default_llm_model: str = Field(default="phi3:mini",
+    default_llm_model: str = Field(default="deepseek-r1:1.5b",
                                     description="Default Ollama model for AI assistant")
     agent_max_tool_calls: int = Field(default=5)
 

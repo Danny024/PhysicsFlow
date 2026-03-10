@@ -947,11 +947,11 @@ doc.add_page_break()
 
 add_slide_header(doc, 12, 16, '🗺️  PRODUCT ROADMAP', CYAN)
 add_heading(doc, 'Build Plan — From Prototype to Platform', color=NAVY, size=28, space_before=0, space_after=4)
-add_body(doc, 'Three production versions shipped. Research-grade AI intelligence now embedded in the core product.',
+add_body(doc, 'Four production versions shipped. Full desktop UI stability + AI assistant improvements in v2.0.1.',
          color=DARK_GREY, size=11, italic=True, space_before=0, space_after=8)
 
-rm = make_table(doc, 1, 5,
-    col_widths=[CONTENT_WIDTH//5 - Cm(0.1)] * 5)
+rm = make_table(doc, 1, 6,
+    col_widths=[CONTENT_WIDTH//6 - Cm(0.1)] * 6)
 rm_data = [
     ('✅  Shipped — v1.1 Foundation', CYAN, 'D6EAF8', [
         'Python gRPC engine + JAX αREKI', 'Ollama AI assistant (8 live tools)',
@@ -976,6 +976,12 @@ rm_data = [
         'Docker CUDA 12.4 image', 'docker-compose SQLite + PostgreSQL',
         'tNavigator .sim ↔ .pfproj bridge', 'SSE streaming for agent chat',
         'DatabaseService singleton', 'n_ensemble + per-well RMSE tracking',
+    ]),
+    ('✅  Shipped — v2.0.1 UI Stability', GREEN, 'EAFAF1', [
+        'All navigation views fixed (8 code-behind files)', 'DataTemplate scoping fixed',
+        'AI assistant now responds correctly', 'Tool-call fallback for all Ollama models',
+        'deepseek-r1:1.5b default model', 'Model dropdown: installed + 14 curated options',
+        'Refresh button re-scans Ollama', 'Ollama SDK API compatibility fixed',
     ]),
     ('🔮  Next — v2.1 Cloud', AMBER, 'FFF9E6', [
         'Managed GPU cloud (SaaS)', 'Compositional PVT (EOS)',
@@ -1168,7 +1174,7 @@ milestones = make_table(doc, 1, 3,
 ms_data = [
     ('30 Customers', 'Target by Month 18', CYAN, 'D6EAF8'),
     ('$2.1M ARR', 'Series A Milestone', GREEN, 'D5F5E3'),
-    ('v2.0 Shipped', 'REST API + Docker + tNavigator Bridge', AMBER, 'FFF9E6'),
+    ('v2.0.1 Shipped', 'Full UI + AI Assistant stability release', AMBER, 'FFF9E6'),
 ]
 for j, (num, label, col, bg) in enumerate(ms_data):
     c = milestones.cell(0, j)
@@ -1238,6 +1244,6 @@ for j, (label, val, col, bg) in enumerate(contact_data):
 
 
 # ── Save ──────────────────────────────────────────────────────────────────────
-output = r'C:\Users\danie\OneDrive\Reservoir_Simulator\PhysicsFlow\PhysicsFlow_PitchDeck_v200.docx'
+output = r'C:\Users\danie\OneDrive\Reservoir_Simulator\PhysicsFlow\PhysicsFlow_PitchDeck_v201.docx'
 doc.save(output)
 print(f'Saved: {output}')

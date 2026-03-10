@@ -5,6 +5,89 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Released] — v2.0.1 — Desktop UI Stability & AI Assistant Fixes
+
+### Build: 2026-03-10
+
+### Fixed — .NET Desktop Navigation (Critical)
+
+- **All 8 view code-behind files were missing** — without `.xaml.cs` files containing
+  `InitializeComponent()`, WPF generates no constructor and all views rendered completely blank.
+  Created code-behind files for every view:
+  - `Views/Dashboard/DashboardView.xaml.cs`
+  - `Views/ProjectSetup/ProjectSetupView.xaml.cs`
+  - `Views/Training/TrainingView.xaml.cs`
+  - `Views/HistoryMatching/HistoryMatchingView.xaml.cs`
+  - `Views/Forecast/ForecastView.xaml.cs`
+  - `Views/Visualisation/ReservoirView3D.xaml.cs`
+  - `Views/Visualisation/CrossSectionView.xaml.cs`
+  - `Views/AIAssistant/AIAssistantView.xaml.cs`
+- **DataTemplate scoping bug** — implicit `DataType` templates in `MainWindow.xaml`
+  Grid.Resources were not visible to the MahApps MetroWindow `ContentPresenter`.
+  Moved all 7 view DataTemplates to new `App/Resources/ViewDataTemplates.xaml`
+  merged at Application level in `App.xaml`.
+- **`TwoWay` binding on read-only computed properties** — `ProjectSetupView.xaml`
+  `Run.Text` bindings on `TotalCells`, `ActiveCells`, `WellCount`, `ProducerCount`,
+  `InjectorCount` defaulted to TwoWay, throwing `DispatcherUnhandledException` at
+  runtime. Added `Mode=OneWay` to all affected bindings.
+
+### Fixed — HistoryMatchingViewModel
+
+- Renamed `StartHmAsync()` → `StartHMAsync()` and `StopHm()` → `StopHM()` so
+  CommunityToolkit source-generator produces the command names the view binds
+  (`StartHMCommand` / `StopHMCommand`)
+- Added missing alias public properties used by the view:
+  `EnsembleSize`, `LocalisationRadius`, `DataMismatch`, `Alpha`, `CanStart`,
+  `HasResults`, `ConvergencePlotModel`, `ProducerNames`, `Quantities`
+- Added missing `[ObservableProperty]` fields: `_useGenerativePriors`, `_useCCR`,
+  `_autoLocalisation`, `_improvementPct`, `_selectedFanWell`
+- Added `ExportResultsCommand` RelayCommand
+- Added `WellMismatchItem` record with `MismatchColor` property for the per-well
+  heatmap chips; added `WellMismatches` ObservableCollection
+
+### Fixed — AI Assistant — Chat Not Responding
+
+- **`phi3:mini` and `deepseek-r1` do not support Ollama tool-calling** (HTTP 400).
+  `reservoir_agent.py` now catches `"does not support tools"` errors and
+  automatically retries with `tools=None` — users get a plain-chat response
+  instead of silence.
+- **`ListModels` returning only fallback model** — `agent_service.py`
+  `ListModels` was using the old dict-style `m['name']` API against an ollama
+  SDK ≥ 0.3 response object, falling silently into the `except` branch and
+  returning only `default_llm_model`. Updated to handle both object (`.model`)
+  and dict (`['name']`) API formats.
+
+### Changed — Default LLM Model
+
+- Default model changed from `phi3:mini` to `deepseek-r1:1.5b` across all
+  configuration layers:
+  - `engine/.env` — `PHYSICSFLOW_DEFAULT_LLM_MODEL=deepseek-r1:1.5b`
+  - `engine/physicsflow/config.py` — `default_llm_model` field default
+  - `desktop/.../AIAssistantViewModel.cs` — `_selectedModel` field default +
+    preference order: `deepseek-r1:1.5b` → `deepseek-r1:14b` → `phi3:mini` → first installed
+  - `desktop/.../SettingsViewModel.cs` — `_ollamaModel` field default
+  - `AppData/Roaming/PhysicsFlow/settings.json` — saved user settings
+
+### Added — AI Assistant Model Dropdown Improvements
+
+- **Installed models listed first** (sorted), followed by 14 curated suggestions
+  (models not yet pulled from Ollama registry), giving the user a one-click path
+  to try new models
+- **Refresh button** (status dot + spinner icon) added to model selector bar —
+  calls `RefreshModelsCommand` to re-fetch installed models from Ollama without
+  restarting the app
+- **Status text** now includes installed count:
+  `"Ollama connected — 2 model(s) installed"`
+- Curated model list: `phi3:mini`, `phi3:medium`, `llama3.1:8b`, `llama3.1:70b`,
+  `llama3.2:3b`, `mistral:7b`, `mistral-nemo`, `gemma2:9b`, `gemma2:27b`,
+  `qwen2.5:7b`, `qwen2.5:14b`, `deepseek-r1:8b`, `deepseek-r1:14b`, `codellama:7b`
+
+### Added — AIAssistantViewModel
+
+- `NewLineCommand` RelayCommand (`Shift+Enter` inserts newline in input box)
+
+---
+
 ## [Released] — v2.0.0 — On-Premise Scale-Out
 
 ### Build: 2026-03-09

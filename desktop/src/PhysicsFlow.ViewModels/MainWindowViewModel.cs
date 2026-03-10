@@ -5,6 +5,7 @@ using Application = System.Windows.Application;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PhysicsFlow.Infrastructure.Engine;
+using Serilog;
 
 namespace PhysicsFlow.ViewModels;
 
@@ -15,6 +16,8 @@ public partial class MainWindowViewModel : ObservableObject
 {
     private readonly EngineManager _engineManager;
     private readonly DashboardViewModel _dashboard;
+    private readonly ProjectSetupViewModel _projectSetup;
+    private readonly Action _openSettingsDialog;
     private readonly TrainingViewModel _training;
     private readonly HistoryMatchingViewModel _historyMatching;
     private readonly ForecastViewModel _forecast;
@@ -40,21 +43,29 @@ public partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel(
         EngineManager engineManager,
         DashboardViewModel dashboard,
+        ProjectSetupViewModel projectSetup,
         TrainingViewModel training,
         HistoryMatchingViewModel historyMatching,
         ForecastViewModel forecast,
         ReservoirView3DViewModel reservoirView3D,
         CrossSectionViewModel crossSection,
-        AIAssistantViewModel aiAssistant)
+        AIAssistantViewModel aiAssistant,
+        Action openSettingsDialog)
     {
         _engineManager = engineManager;
         _dashboard = dashboard;
+        _projectSetup = projectSetup;
         _training = training;
         _historyMatching = historyMatching;
         _forecast = forecast;
         _reservoirView3D = reservoirView3D;
         _crossSection = crossSection;
         AIAssistant = aiAssistant;
+        _openSettingsDialog = openSettingsDialog;
+
+        // Wire up project wizard events
+        _projectSetup.ProjectSaved    += (_, path) => { CurrentProjectName = System.IO.Path.GetFileNameWithoutExtension(path); CurrentView = _dashboard; };
+        _projectSetup.WizardCancelled += (_, _)    => CurrentView = _dashboard;
 
         // Default view
         CurrentView = _dashboard;
@@ -69,25 +80,54 @@ public partial class MainWindowViewModel : ObservableObject
     // ── Navigation commands ────────────────────────────────────────────────────
 
     [RelayCommand]
-    private void NavigateToDashboard()        => CurrentView = _dashboard;
+    private void NavigateToDashboard()
+    {
+        Log.Information("[NAV] Navigate → Dashboard");
+        CurrentView = _dashboard;
+    }
 
     [RelayCommand]
-    private void NavigateToProjectSetup()     => CurrentView = null; // ProjectSetupViewModel
+    private void NavigateToProjectSetup()
+    {
+        Log.Information("[NAV] Navigate → ProjectSetup (vm type={Type})", _projectSetup?.GetType().Name ?? "null");
+        CurrentView = _projectSetup;
+        Log.Information("[NAV] CurrentView is now {Type}", CurrentView?.GetType().Name ?? "null");
+    }
 
     [RelayCommand]
-    private void NavigateToTraining()         => CurrentView = _training;
+    private void NavigateToTraining()
+    {
+        Log.Information("[NAV] Navigate → Training");
+        CurrentView = _training;
+    }
 
     [RelayCommand]
-    private void NavigateToHistoryMatching()  => CurrentView = _historyMatching;
+    private void NavigateToHistoryMatching()
+    {
+        Log.Information("[NAV] Navigate → HistoryMatching");
+        CurrentView = _historyMatching;
+    }
 
     [RelayCommand]
-    private void NavigateToForecast()         => CurrentView = _forecast;
+    private void NavigateToForecast()
+    {
+        Log.Information("[NAV] Navigate → Forecast");
+        CurrentView = _forecast;
+    }
 
     [RelayCommand]
-    private void NavigateTo3DViewer()         => CurrentView = _reservoirView3D;
+    private void NavigateTo3DViewer()
+    {
+        Log.Information("[NAV] Navigate → 3DViewer");
+        CurrentView = _reservoirView3D;
+    }
 
     [RelayCommand]
-    private void NavigateToCrossSection()     => CurrentView = _crossSection;
+    private void NavigateToCrossSection()
+    {
+        Log.Information("[NAV] Navigate → CrossSection");
+        CurrentView = _crossSection;
+    }
 
     // ── AI panel toggle ───────────────────────────────────────────────────────
 
@@ -103,10 +143,7 @@ public partial class MainWindowViewModel : ObservableObject
     // ── Settings ──────────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private void OpenSettings()
-    {
-        // TODO: open settings dialog
-    }
+    private void OpenSettings() => _openSettingsDialog();
 
     // ── Engine management ─────────────────────────────────────────────────────
 

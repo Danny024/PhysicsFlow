@@ -22,32 +22,95 @@ public partial class HistoryMatchingViewModel : ObservableObject
     private readonly AppDbService?                    _db;
     private readonly ILogger<HistoryMatchingViewModel>? _log;
     private CancellationTokenSource?                  _cts;
+    private double _initialMismatch = 1.0;
 
     // ── HM state ──────────────────────────────────────────────────────────────
 
-    [ObservableProperty] private bool   _isRunning;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanStart))]
+    private bool _isRunning;
+
     [ObservableProperty] private bool   _isConverged;
     [ObservableProperty] private int    _currentIteration;
     [ObservableProperty] private int    _maxIterations     = 20;
-    [ObservableProperty] private double _currentMismatch;
-    [ObservableProperty] private double _currentAlpha;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DataMismatch))]
+    private double _currentMismatch;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Alpha))]
+    private double _currentAlpha;
+
     [ObservableProperty] private double _sCumulative;
     [ObservableProperty] private double _progressPct;
+    [ObservableProperty] private double _improvementPct;
     [ObservableProperty] private string _statusMessage     = "Ready";
     [ObservableProperty] private string _convergenceLabel  = "Not started";
     [ObservableProperty] private string _hmRunId          = string.Empty;
 
     // ── Configuration ─────────────────────────────────────────────────────────
 
-    [ObservableProperty] private int    _configEnsembleSize    = 200;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EnsembleSize))]
+    private int _configEnsembleSize = 200;
+
     [ObservableProperty] private int    _configMaxIterations   = 20;
-    [ObservableProperty] private double _configLocRadius       = 0.4;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LocalisationRadius))]
+    private double _configLocRadius = 12.0;   // cells (view slider: 2–40)
+
     [ObservableProperty] private double _configNoiseInflation  = 0.05;
     [ObservableProperty] private string _configDevice          = "cuda";
+
+    // ── Optional feature flags (bound to CheckBoxes in view) ─────────────────
+
+    [ObservableProperty] private bool _useGenerativePriors;
+    [ObservableProperty] private bool _useCCR;
+    [ObservableProperty] private bool _autoLocalisation;
+
+    // ── View-compatible property aliases ──────────────────────────────────────
+
+    /// <summary>View binds to EnsembleSize (two-way via NumericUpDown).</summary>
+    public int EnsembleSize
+    {
+        get => ConfigEnsembleSize;
+        set => ConfigEnsembleSize = value;
+    }
+
+    /// <summary>View binds to LocalisationRadius (two-way via Slider).</summary>
+    public double LocalisationRadius
+    {
+        get => ConfigLocRadius;
+        set => ConfigLocRadius = value;
+    }
+
+    /// <summary>View binds DataMismatch stat card to CurrentMismatch.</summary>
+    public double DataMismatch => CurrentMismatch;
+
+    /// <summary>View binds Alpha stat card to CurrentAlpha.</summary>
+    public double Alpha => CurrentAlpha;
+
+    /// <summary>View binds CanStart to IsEnabled on the Start button.</summary>
+    public bool CanStart => !IsRunning;
+
+    /// <summary>View enables Export button only when results exist.</summary>
+    public bool HasResults => WellMismatches.Count > 0;
+
+    /// <summary>View binds ConvergencePlotModel to the mismatch convergence chart.</summary>
+    public PlotModel ConvergencePlotModel => MismatchPlotModel;
+
+    /// <summary>View binds ProducerNames to the fan-chart well selector.</summary>
+    public ObservableCollection<string> ProducerNames => WellNames;
+
+    /// <summary>View binds Quantities to the quantity selector ComboBox.</summary>
+    public ObservableCollection<string> Quantities => QuantityOptions;
 
     // ── Well selection ────────────────────────────────────────────────────────
 
     [ObservableProperty] private string?  _selectedWell;
+    [ObservableProperty] private string?  _selectedFanWell;
     [ObservableProperty] private string   _selectedQuantity = "Oil Rate (stb/day)";
 
     public ObservableCollection<string> WellNames { get; } = new();
@@ -69,9 +132,10 @@ public partial class HistoryMatchingViewModel : ObservableObject
         MarkerSize      = 4,
     };
 
-    // ── Per-well RMSE table ───────────────────────────────────────────────────
+    // ── Per-well collections ──────────────────────────────────────────────────
 
-    public ObservableCollection<WellRmseItem> WellRmseTable { get; } = new();
+    public ObservableCollection<WellRmseItem>      WellRmseTable  { get; } = new();
+    public ObservableCollection<WellMismatchItem>  WellMismatches { get; } = new();
 
     // ── Iteration log ─────────────────────────────────────────────────────────
 
@@ -97,13 +161,17 @@ public partial class HistoryMatchingViewModel : ObservableObject
             WellNames.Add(w);
 
         if (WellNames.Count > 0)
-            SelectedWell = WellNames[0];
+        {
+            SelectedWell    = WellNames[0];
+            SelectedFanWell = WellNames[0];
+        }
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
+    /// <summary>View binds StartHMCommand (RelayCommand name matches method prefix).</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private async Task StartHmAsync()
+    private async Task StartHMAsync()
     {
         _cts          = new CancellationTokenSource();
         IsRunning     = true;
@@ -112,7 +180,11 @@ public partial class HistoryMatchingViewModel : ObservableObject
         MaxIterations = ConfigMaxIterations;
         IterationLog.Clear();
         WellRmseTable.Clear();
+        WellMismatches.Clear();
         _mismatchSeries.Points.Clear();
+        _initialMismatch = 1.0;
+        ImprovementPct   = 0.0;
+        OnPropertyChanged(nameof(HasResults));
 
         try
         {
@@ -133,16 +205,19 @@ public partial class HistoryMatchingViewModel : ObservableObject
         }
     }
 
-    private bool CanStart() => !IsRunning;
-
-    [RelayCommand(CanExecute = nameof(CanStop))]
-    private void StopHm()
+    /// <summary>View binds StopHMCommand.</summary>
+    [RelayCommand]
+    private void StopHM()
     {
         _cts?.Cancel();
         StatusMessage = "Stopping...";
     }
 
-    private bool CanStop() => IsRunning;
+    [RelayCommand]
+    private void ExportResults()
+    {
+        StatusMessage = "Export — not yet implemented.";
+    }
 
     [RelayCommand]
     private async Task LoadResultsFromDbAsync()
@@ -150,7 +225,6 @@ public partial class HistoryMatchingViewModel : ObservableObject
         if (_db is null || string.IsNullOrEmpty(HmRunId)) return;
         try
         {
-            // GetHMHistoryAsync is the correct method name in AppDbService
             var history = await _db.GetHMHistoryAsync(
                 projectId: string.Empty, hmRunId: HmRunId);
             IterationLog.Clear();
@@ -206,12 +280,12 @@ public partial class HistoryMatchingViewModel : ObservableObject
         double mm    = 1.0;
         double sCum  = 0.0;
         double alpha = 1.0;
+        _initialMismatch = mm;
 
         for (int it = 1; it <= MaxIterations && !ct.IsCancellationRequested; it++)
         {
             await Task.Delay(600, ct);
 
-            // Simulated mismatch reduction
             mm    *= (0.7 + rng.NextDouble() * 0.15);
             alpha  = Math.Max(0.05, alpha * 0.75);
             sCum  += alpha;
@@ -221,6 +295,7 @@ public partial class HistoryMatchingViewModel : ObservableObject
             CurrentAlpha     = alpha;
             SCumulative      = sCum;
             ProgressPct      = (double)it / MaxIterations * 100.0;
+            ImprovementPct   = (1.0 - mm / _initialMismatch) * 100.0;
 
             _mismatchSeries.Points.Add(new DataPoint(it, mm));
             MismatchPlotModel.InvalidatePlot(true);
@@ -250,12 +325,20 @@ public partial class HistoryMatchingViewModel : ObservableObject
     private void BuildWellRmseTable(Random rng)
     {
         WellRmseTable.Clear();
+        WellMismatches.Clear();
+
         foreach (var w in WellNames)
         {
-            var rmse = 0.02 + rng.NextDouble() * 0.18;
-            WellRmseTable.Add(new WellRmseItem(w, Math.Round(rmse, 4),
-                rmse < 0.08 ? "Good" : rmse < 0.14 ? "Fair" : "Poor"));
+            var rmse  = 0.02 + rng.NextDouble() * 0.18;
+            var rmseR = Math.Round(rmse, 4);
+            var qual  = rmse < 0.08 ? "Good" : rmse < 0.14 ? "Fair" : "Poor";
+            var color = rmse < 0.08 ? "#2ECC71" : rmse < 0.14 ? "#E67E22" : "#E74C3C";
+
+            WellRmseTable.Add(new WellRmseItem(w, rmseR, qual));
+            WellMismatches.Add(new WellMismatchItem(w, rmseR, color));
         }
+
+        OnPropertyChanged(nameof(HasResults));
     }
 }
 
@@ -269,3 +352,5 @@ public record HmIterationItem(
     bool   Converged);
 
 public record WellRmseItem(string WellName, double Rmse, string Quality);
+
+public record WellMismatchItem(string WellName, double Rmse, string MismatchColor);

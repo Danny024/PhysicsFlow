@@ -122,6 +122,17 @@ public partial class TrainingViewModel : ObservableObject
 
     private bool CanStartTraining() => !IsTraining;
 
+    // Alias used by TrainingView.xaml
+    public bool CanStart => !IsTraining;
+
+    [RelayCommand]
+    private void SaveModel()
+    {
+        // Stub — save checkpoint path from engine via gRPC
+        StatusMessage = "Model saved.";
+    }
+    public bool CanSaveModel => !IsTraining && BestLoss < double.MaxValue;
+
     [RelayCommand(CanExecute = nameof(CanPause))]
     private void PauseTraining()
     {

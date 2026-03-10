@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PhysicsFlow.Infrastructure.Agent;
@@ -19,7 +20,7 @@ public partial class AIAssistantViewModel : ObservableObject
 
     [ObservableProperty] private string _inputText = string.Empty;
     [ObservableProperty] private bool _isTyping;
-    [ObservableProperty] private string _selectedModel = "phi3:mini";
+    [ObservableProperty] private string _selectedModel = "deepseek-r1:1.5b";
     [ObservableProperty] private ObservableCollection<string> _availableModels = new();
     [ObservableProperty] private string _ollamaStatusColor = "#FF6B6B";
     [ObservableProperty] private string _ollamaStatusText = "Checking Ollama...";
@@ -38,6 +39,26 @@ public partial class AIAssistantViewModel : ObservableObject
         new("🗺  Reservoir overview",    "Give me a full summary of the current reservoir project."),
     };
 
+    // Curated list of recommended Ollama models (shown even if not yet installed)
+    private static readonly string[] _curatedModels =
+    [
+        "phi3:mini",          // ~2.3 GB  — fast, good reasoning
+        "phi3:medium",        // ~7.9 GB  — higher quality
+        "llama3.1:8b",        // ~4.7 GB  — Meta Llama 3.1
+        "llama3.1:70b",       // ~40 GB   — large, high quality
+        "llama3.2:3b",        // ~2.0 GB  — very fast
+        "mistral:7b",         // ~4.1 GB  — Mistral 7B
+        "mistral-nemo",       // ~7.1 GB  — Mistral Nemo
+        "gemma2:9b",          // ~5.4 GB  — Google Gemma 2
+        "gemma2:27b",         // ~16 GB   — larger Gemma 2
+        "qwen2.5:7b",         // ~4.4 GB  — Alibaba Qwen 2.5
+        "qwen2.5:14b",        // ~8.9 GB  — larger Qwen
+        "deepseek-r1:8b",     // ~4.9 GB  — DeepSeek R1 reasoning
+        "deepseek-r1:14b",    // ~9.0 GB  — larger DeepSeek R1
+        "codellama:7b",       // ~3.8 GB  — code-focused
+        "nomic-embed-text",   // ~274 MB  — embeddings
+    ];
+
     public AIAssistantViewModel(OllamaAgentClient agent)
     {
         _agent = agent;
@@ -48,23 +69,7 @@ public partial class AIAssistantViewModel : ObservableObject
     {
         try
         {
-            var models = await _agent.ListModelsAsync();
-            foreach (var m in models)
-                AvailableModels.Add(m);
-
-            if (AvailableModels.Count > 0)
-            {
-                SelectedModel = AvailableModels.Contains("phi3:mini")
-                    ? "phi3:mini"
-                    : AvailableModels[0];
-                OllamaStatusColor = "#2ECC71";
-                OllamaStatusText = "Ollama connected";
-            }
-            else
-            {
-                OllamaStatusColor = "#E67E22";
-                OllamaStatusText = "No models found — run: ollama pull phi3:mini";
-            }
+            await RefreshModelsInternalAsync();
 
             // Welcome message
             AddAssistantMessage(
@@ -84,6 +89,38 @@ public partial class AIAssistantViewModel : ObservableObject
                 "  ollama pull phi3:mini\n" +
                 "Then restart PhysicsFlow."
             );
+        }
+    }
+
+    private async Task RefreshModelsInternalAsync()
+    {
+        // Fetch installed models from Ollama
+        var installed = (await _agent.ListModelsAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        AvailableModels.Clear();
+
+        // Installed models first (sorted), then curated suggestions not yet installed
+        foreach (var m in installed.OrderBy(x => x))
+            AvailableModels.Add(m);
+
+        foreach (var m in _curatedModels)
+            if (!installed.Contains(m))
+                AvailableModels.Add(m);
+
+        if (installed.Count > 0)
+        {
+            // Preference order: deepseek-r1:1.5b → deepseek-r1:14b → phi3:mini → first installed
+            string[] preferred = ["deepseek-r1:1.5b", "deepseek-r1:14b", "phi3:mini"];
+            SelectedModel = preferred.FirstOrDefault(m => installed.Contains(m))
+                            ?? installed.OrderBy(x => x).First();
+            OllamaStatusColor = "#2ECC71";
+            OllamaStatusText = $"Ollama connected — {installed.Count} model(s) installed";
+        }
+        else
+        {
+            SelectedModel = "deepseek-r1:1.5b";
+            OllamaStatusColor = "#E67E22";
+            OllamaStatusText = "No models installed — run: ollama pull deepseek-r1:1.5b";
         }
     }
 
@@ -146,11 +183,30 @@ public partial class AIAssistantViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void NewLine() => InputText += "\n";
+
+    [RelayCommand]
     private async Task ClearHistoryAsync()
     {
         Messages.Clear();
         await _agent.ClearHistoryAsync(_sessionId);
         AddAssistantMessage("Conversation cleared. How can I help you?");
+    }
+
+    [RelayCommand]
+    private async Task RefreshModelsAsync()
+    {
+        OllamaStatusColor = "#F39C12";
+        OllamaStatusText = "Refreshing models...";
+        try
+        {
+            await RefreshModelsInternalAsync();
+        }
+        catch (Exception ex)
+        {
+            OllamaStatusColor = "#FF6B6B";
+            OllamaStatusText = $"Refresh failed: {ex.Message}";
+        }
     }
 
     partial void OnSelectedModelChanged(string value)

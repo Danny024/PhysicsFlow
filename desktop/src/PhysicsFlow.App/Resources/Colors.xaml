@@ -1,0 +1,26 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surface colours (dark theme) -->
+    <Color x:Key="SurfaceColor">#1A1A2E</Color>
+    <Color x:Key="SurfaceVariantColor">#16213E</Color>
+    <Color x:Key="CardBackgroundColor">#1E2A3A</Color>
+    <Color x:Key="BorderColor">#2A3A4A</Color>
+
+    <!-- Semantic colours -->
+    <Color x:Key="SuccessColor">#2ECC71</Color>
+    <Color x:Key="WarningColor">#E67E22</Color>
+    <Color x:Key="ErrorColor">#E74C3C</Color>
+    <Color x:Key="InfoColor">#3498DB</Color>
+
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="SurfaceBrush"        Color="{StaticResource SurfaceColor}"/>
+    <SolidColorBrush x:Key="SurfaceVariantBrush"  Color="{StaticResource SurfaceVariantColor}"/>
+    <SolidColorBrush x:Key="CardBackgroundBrush"  Color="{StaticResource CardBackgroundColor}"/>
+    <SolidColorBrush x:Key="BorderBrush"          Color="{StaticResource BorderColor}"/>
+    <SolidColorBrush x:Key="SuccessBrush"         Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="WarningBrush"         Color="{StaticResource WarningColor}"/>
+    <SolidColorBrush x:Key="ErrorBrush"           Color="{StaticResource ErrorColor}"/>
+    <SolidColorBrush x:Key="InfoBrush"            Color="{StaticResource InfoColor}"/>
+
+</ResourceDictionary>

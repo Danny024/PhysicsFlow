@@ -43,13 +43,24 @@ public class EngineManager : IAsyncDisposable
     public async Task StartAsync(int port = 50051, CancellationToken ct = default)
     {
         Port = port;
+        OnStatusChanged(EngineStatus.Starting);
+
+        // If engine is already running (dev started it manually), skip spawning
+        if (await IsEngineAlreadyRunningAsync(ct))
+        {
+            _logger.LogInformation("Engine already running on port {Port} — skipping auto-start", port);
+            OnStatusChanged(EngineStatus.Running);
+            return;
+        }
+
+        var workDir = GetEngineWorkDir();
 
         // Clean up any stale ready signal
-        if (File.Exists(ReadySignalFile))
-            File.Delete(ReadySignalFile);
+        var signalPath = Path.Combine(workDir, ReadySignalFile);
+        if (File.Exists(signalPath))
+            File.Delete(signalPath);
 
-        var python = File.Exists(PythonExe) ? PythonExe : FallbackPython;
-        var workDir = GetEngineWorkDir();
+        var python = GetPythonExe(workDir);
 
         _logger.LogInformation("Starting PhysicsFlow engine on port {Port}", port);
         _logger.LogInformation("Python: {Python}, WorkDir: {WorkDir}", python, workDir);
@@ -87,7 +98,7 @@ public class EngineManager : IAsyncDisposable
         _engineProcess.EnableRaisingEvents = true;
 
         // Wait for ready signal (up to 60 seconds)
-        await WaitForReadyAsync(TimeSpan.FromSeconds(60), _cts.Token);
+        await WaitForReadyAsync(workDir, TimeSpan.FromSeconds(60), _cts.Token);
 
         _logger.LogInformation("PhysicsFlow engine ready on port {Port}", port);
         OnStatusChanged(EngineStatus.Running);
@@ -132,16 +143,61 @@ public class EngineManager : IAsyncDisposable
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static async Task WaitForReadyAsync(TimeSpan timeout, CancellationToken ct)
+    private static async Task<bool> IsEngineAlreadyRunningAsync(CancellationToken ct)
+    {
+        // Try REST health endpoint (3 attempts × 500 ms — REST starts slightly after gRPC)
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                var resp = await http.GetAsync("http://localhost:8000/api/v1/health", ct);
+                if (resp.IsSuccessStatusCode) return true;
+            }
+            catch { }
+            if (attempt < 2)
+                await Task.Delay(700, ct);
+        }
+
+        // Fallback: TCP connect to gRPC port — confirms the gRPC server is up
+        try
+        {
+            using var tcp = new System.Net.Sockets.TcpClient();
+            var connect = tcp.ConnectAsync("127.0.0.1", 50051);
+            return await Task.WhenAny(connect, Task.Delay(1000, ct)) == connect
+                   && tcp.Connected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string GetPythonExe(string engineWorkDir)
+    {
+        // 1. Bundled Python (production installer)
+        if (File.Exists(PythonExe)) return PythonExe;
+
+        // 2. .venv inside the engine directory (developer workflow)
+        var venv = Path.Combine(engineWorkDir, ".venv", "Scripts", "python.exe");
+        if (File.Exists(venv)) return venv;
+
+        // 3. System python — last resort
+        return FallbackPython;
+    }
+
+    private static async Task WaitForReadyAsync(string workDir, TimeSpan timeout, CancellationToken ct)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
 
+        var signalPath = Path.Combine(workDir, ReadySignalFile);
+
         while (!timeoutCts.Token.IsCancellationRequested)
         {
-            if (File.Exists(ReadySignalFile))
+            if (File.Exists(signalPath))
             {
-                File.Delete(ReadySignalFile);
+                File.Delete(signalPath);
                 return;
             }
             await Task.Delay(200, timeoutCts.Token);
@@ -152,29 +208,20 @@ public class EngineManager : IAsyncDisposable
 
     private static string GetEngineWorkDir()
     {
-        // In dev mode: engine/ subdirectory relative to solution root
-        var solutionRoot = FindSolutionRoot();
-        if (solutionRoot != null)
-        {
-            var devPath = Path.Combine(solutionRoot, "engine");
-            if (Directory.Exists(devPath)) return devPath;
-        }
-
-        // In production: engine/ bundled next to the executable
-        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "engine");
-    }
-
-    private static string? FindSolutionRoot()
-    {
+        // Walk up from the app binary looking for a sibling "engine/" folder
+        // that contains pyproject.toml — this is the PhysicsFlow project root.
         var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
         while (dir != null)
         {
-            if (dir.GetFiles("*.sln").Length > 0 ||
-                dir.GetFiles("pyproject.toml").Length > 0)
-                return dir.FullName;
+            var enginePath = Path.Combine(dir.FullName, "engine");
+            if (Directory.Exists(enginePath) &&
+                File.Exists(Path.Combine(enginePath, "pyproject.toml")))
+                return enginePath;
             dir = dir.Parent;
         }
-        return null;
+
+        // Production: engine/ is bundled next to the executable
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "engine");
     }
 
     private void OnEngineExited(object? sender, EventArgs e)
