@@ -63,7 +63,7 @@
                         Background="Transparent" BorderBrush="#1E3A5F"
                         Foreground="#4488FF">
                     <StackPanel Orientation="Horizontal">
-                        <iconPacks:PackIconMaterial Kind="ImageExport" Width="14" Height="14" Margin="0,0,6,0"/>
+                        <iconPacks:PackIconMaterial Kind="Export" Width="14" Height="14" Margin="0,0,6,0"/>
                         <TextBlock Text="Export Image"/>
                     </StackPanel>
                 </Button>

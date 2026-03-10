@@ -12,10 +12,23 @@ Implements:
 from __future__ import annotations
 
 import logging
+import threading
+from pathlib import Path
 from typing import Iterator
 
 from ..agent.context_provider import ReservoirContextProvider
 from ..config import EngineConfig
+
+# Project documentation to auto-index into RAG on first agent use.
+# Paths are resolved relative to the project root (two levels above engine/).
+_ENGINE_DIR   = Path(__file__).parent.parent.parent          # .../PhysicsFlow/engine/
+_PROJECT_ROOT = _ENGINE_DIR.parent                           # .../PhysicsFlow/
+_KNOWLEDGE_DOCS: list[Path] = [
+    _PROJECT_ROOT / "PhysicsFlow_UserManual_v201.docx",      # full user guide
+    _PROJECT_ROOT / "README.md",                             # architecture & API overview
+    _PROJECT_ROOT / "CHANGELOG.md",                          # version history & features
+    _ENGINE_DIR   / "PhysicsFlow_UserManual_v201.docx",      # fallback if built in engine/
+]
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +59,41 @@ class AgentServicer:
                 model=self.cfg.default_llm_model,
                 context_provider=self.ctx,
             )
+            # Index product documentation in the background so the first chat
+            # isn't blocked — the RAG context will be available from the second
+            # message onward (usually within a few seconds).
+            threading.Thread(
+                target=self._index_knowledge_base,
+                daemon=True,
+                name="rag-indexer",
+            ).start()
         return self._agent
+
+    def _index_knowledge_base(self) -> None:
+        """Index PhysicsFlow documentation into the RAG pipeline."""
+        try:
+            rag = self._agent.rag  # type: ignore[union-attr]
+            if rag is None:
+                log.info("RAG pipeline unavailable — skipping knowledge base indexing.")
+                return
+
+            # Deduplicate: only index each file once (RAG uses upsert internally)
+            indexed_names: set[str] = set()
+            for doc_path in _KNOWLEDGE_DOCS:
+                if doc_path.name in indexed_names:
+                    continue  # skip duplicate fallback paths
+                if doc_path.exists():
+                    try:
+                        rag.index_file(str(doc_path))
+                        indexed_names.add(doc_path.name)
+                        log.info("RAG: indexed '%s' (%d chunks total)",
+                                 doc_path.name, rag.stats().get("vector_chunks", "?"))
+                    except Exception as e:
+                        log.warning("RAG: failed to index '%s': %s", doc_path.name, e)
+                else:
+                    log.debug("RAG: doc not found, skipping: %s", doc_path)
+        except Exception as e:
+            log.warning("Knowledge base indexing failed: %s", e)
 
     # ── Chat (server-streaming) ───────────────────────────────────────────
 
@@ -138,7 +185,7 @@ class AgentServicer:
         agent = self._get_agent()
         session_id = request.session_id or 'default'
         agent.clear_history(session_id)
-        return pb.ClearHistoryResponse(success=True)
+        return pb.ClearHistoryResponse(cleared=True)
 
     # ── GetToolLog ────────────────────────────────────────────────────────
 
