@@ -108,8 +108,14 @@ class AgentServicer:
 
         log.info("Chat[%s]: %s...", session_id, message[:80])
 
+        project_path = request.context_project or None
+
         try:
-            for chunk in agent.chat(session_id=session_id, message=message):
+            for chunk in agent.chat(
+                session_id=session_id,
+                message=message,
+                project_path=project_path,
+            ):
                 token     = chunk.get('token', '')
                 is_tool   = chunk.get('is_tool_call', False)
                 is_done   = chunk.get('is_done', False)

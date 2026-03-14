@@ -257,39 +257,73 @@ class ReservoirTools:
     def get_well_performance(self, well_name: str) -> dict:
         wells_data = self.ctx.well_results
         if not wells_data:
-            return {"error": "No simulation results available yet."}
+            return {"error": "No production data available. Load a project or run a simulation."}
 
         if well_name.lower() == "all":
-            return {"wells": wells_data, "time_days": self.ctx.time_days}
+            # Return compact summary for all producers — avoid huge payload
+            summary = {}
+            time_d  = self.ctx.time_days
+            for w, d in wells_data.items():
+                if d.get("status") == "injector":
+                    continue
+                summary[w] = {
+                    "peak_wopr_stbd":   round(max(d.get("wopr", [0])), 0),
+                    "cum_oil_stb":      self._cumulative(d.get("wopr", [])),
+                    "current_wopr_stbd":round(d.get("wopr", [0])[-1], 0) if d.get("wopr") else 0,
+                    "current_wcut":     self._water_cut(d),
+                    "status":           d.get("status", "unknown"),
+                    "source":           d.get("source", "simulation"),
+                }
+            return {
+                "well_summary": summary,
+                "time_days":    time_d,
+                "data_source":  next(iter(wells_data.values())).get("source", "simulation"),
+                "note": (
+                    "source='synthetic_baseline' means reference decline-curve profiles; "
+                    "run a PINO simulation to replace with physics-based results."
+                    if next(iter(wells_data.values())).get("source") == "synthetic_baseline"
+                    else "Live simulation results."
+                ),
+            }
 
         well = wells_data.get(well_name)
         if well is None:
-            available = list(wells_data.keys())
+            available = [w for w in wells_data if w != "FIELD"][:12]
             return {
                 "error": f"Well '{well_name}' not found.",
-                "available_wells": available[:10],
+                "available_wells": available,
             }
 
+        source   = well.get("source", "simulation")
+        status   = well.get("status", "on_target")
+        time_d   = self.ctx.time_days
+        wopr     = well.get("wopr", [])
+        wwpr     = well.get("wwpr", [])
+        wgpr     = well.get("wgpr", [])
+        cum_oil  = self._cumulative(wopr)
+        wcut_now = self._water_cut(well)
+
         return {
-            "well_name": well_name,
-            "time_days": self.ctx.time_days,
-            "wopr_stb_day": well.get("wopr", []),
-            "wwpr_stb_day": well.get("wwpr", []),
-            "wgpr_mscfd":   well.get("wgpr", []),
-            "cum_oil_stb":  self._cumulative(well.get("wopr", [])),
-            "cum_water_stb":self._cumulative(well.get("wwpr", [])),
+            "well_name":       well_name,
+            "performance_status": status,
+            "data_source":     source,
+            "time_days":       time_d,
+            "wopr_stb_day":    wopr,
+            "wwpr_stb_day":    wwpr,
+            "wgpr_mscfd":      wgpr,
+            "peak_wopr_stbd":  round(max(wopr), 0) if wopr else 0,
+            "cum_oil_stb":     cum_oil,
+            "current_wcut":    wcut_now,
             "chart": {
                 "chart_type": "line",
-                "title": f"{well_name} Production Profile",
+                "title": f"{well_name} Production Profile [{source}]",
                 "x_label": "Time (days)",
                 "y_label": "Rate (STB/day)",
                 "series": [
-                    {"name": "Oil Rate", "x": self.ctx.time_days,
-                     "y": well.get("wopr", []), "color": "#228B22"},
-                    {"name": "Water Rate", "x": self.ctx.time_days,
-                     "y": well.get("wwpr", []), "color": "#1E90FF"},
-                    {"name": "Gas Rate (×0.001)", "x": self.ctx.time_days,
-                     "y": [g * 0.001 for g in well.get("wgpr", [])], "color": "#FF6B35"},
+                    {"name": "Oil Rate",   "x": time_d, "y": wopr,  "color": "#228B22"},
+                    {"name": "Water Rate", "x": time_d, "y": wwpr,  "color": "#1E90FF"},
+                    {"name": "Gas Rate (×0.001)", "x": time_d,
+                     "y": [g * 0.001 for g in wgpr], "color": "#FF6B35"},
                 ],
             },
         }
@@ -373,14 +407,54 @@ class ReservoirTools:
     def get_data_mismatch_per_well(self) -> dict:
         mismatch = self.ctx.per_well_mismatch
         if not mismatch:
-            return {"error": "No mismatch data available."}
+            return {"error": "No mismatch data available. Load a project first."}
 
-        worst = sorted(mismatch.items(), key=lambda x: x[1].get("total", 0), reverse=True)
+        sorted_wells = sorted(mismatch.items(), key=lambda x: x[1].get("total", 0), reverse=True)
+        above = [w for w, v in mismatch.items() if v.get("status") == "above_expectation"]
+        below = [w for w, v in mismatch.items() if v.get("status") == "below_expectation"]
+        on_tgt = [w for w, v in mismatch.items() if v.get("status") == "on_target"]
+
+        source = next(iter(mismatch.values())).get("source", "simulation")
         return {
-            "per_well": mismatch,
-            "worst_3_wells": [w[0] for w in worst[:3]],
-            "overall_rmse": self.ctx.overall_rmse,
+            "per_well":              mismatch,
+            "worst_wells":           [w[0] for w in sorted_wells[:5]],
+            "best_wells":            [w[0] for w in sorted_wells[-3:]],
+            "above_expectation":     above,
+            "below_expectation":     below,
+            "on_target":             on_tgt,
+            "overall_rmse":          self.ctx.overall_rmse,
+            "data_source":           source,
+            "note": (
+                "source='synthetic_baseline' — RMSE values are pre-simulation estimates. "
+                "Run history matching to obtain real per-well data mismatch."
+                if source == "synthetic_baseline"
+                else "Live history matching results."
+            ),
         }
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _water_cut(well: dict) -> float:
+        """Return current water cut fraction (last timestep)."""
+        wopr = well.get("wopr", [])
+        wwpr = well.get("wwpr", [])
+        if not wopr or not wwpr:
+            return 0.0
+        q_o = wopr[-1]
+        q_w = wwpr[-1]
+        total = q_o + q_w
+        return round(q_w / total, 3) if total > 0 else 0.0
+
+    @staticmethod
+    def _cumulative(rates: list[float], dt: float = 100.0) -> float:
+        """Approximate cumulative production from rate array (trapezoid rule)."""
+        if not rates:
+            return 0.0
+        total = 0.0
+        for i in range(len(rates) - 1):
+            total += 0.5 * (rates[i] + rates[i + 1]) * dt
+        return round(total, 0)
 
     def get_field_property(
         self, property: str, i: int, j: int, k: int, timestep: int = -1
@@ -592,15 +666,3 @@ class ReservoirTools:
 
     def get_project_summary(self) -> dict:
         return self.ctx.get_project_summary_dict()
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _cumulative(rates: list[float], dt: float = 100.0) -> float:
-        """Approximate cumulative production from rate array (trapezoid rule)."""
-        if not rates:
-            return 0.0
-        total = 0.0
-        for i in range(len(rates) - 1):
-            total += 0.5 * (rates[i] + rates[i + 1]) * dt
-        return round(total, 0)
