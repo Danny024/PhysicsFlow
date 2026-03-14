@@ -192,6 +192,14 @@ class ReservoirAgent:
             except Exception as e:
                 logger.warning("RAG retrieval failed: %s", e)
 
+        # ── Proactive tool calling ─────────────────────────────────────────
+        # Call data tools based on question keywords BEFORE the LLM sees the
+        # message. This guarantees real numbers are available even for models
+        # that don't support tool-calling or ignore system-prompt instructions.
+        proactive_context = self._proactive_tool_context(message)
+        if proactive_context:
+            logger.debug("Proactive tool context injected (%d chars)", len(proactive_context))
+
         # Append user message
         history.append({"role": "user", "content": message})
 
@@ -205,7 +213,8 @@ class ReservoirAgent:
                 response = ollama.chat(
                     model=self.model,
                     messages=self._build_messages(
-                        history, project_summary, rag_context, kg_context
+                        history, project_summary, rag_context, kg_context,
+                        proactive_context,
                     ),
                     tools=TOOL_DEFINITIONS,
                     stream=False,   # get full response to check for tool calls
@@ -225,7 +234,8 @@ class ReservoirAgent:
                         response = ollama.chat(
                             model=self.model,
                             messages=self._build_messages(
-                                history, project_summary, rag_context, kg_context
+                                history, project_summary, rag_context, kg_context,
+                                proactive_context,
                             ),
                             stream=False,
                         )
@@ -376,21 +386,99 @@ class ReservoirAgent:
         """Expose RAG pipeline for direct indexing from outside the agent."""
         return self._get_rag()
 
+    def _proactive_tool_context(self, message: str) -> str:
+        """
+        Keyword-triggered tool calls executed before the LLM sees the message.
+
+        Guarantees real data is present in the context even when the model
+        cannot call tools or ignores tool-call instructions.
+        Results have chart/time-series data stripped to keep payload small.
+        """
+        m = message.lower()
+        results: list[tuple[str, dict]] = []
+
+        # HM / convergence / mismatch
+        if any(k in m for k in [
+            "mismatch", "match", "convergence", "areki", "history match",
+            "hm status", "hm result", "iteration", "summarise", "summarize",
+            "matching poorly", "poorly match",
+        ]):
+            try:
+                results.append(("get_hm_iteration_summary",
+                                 self.tools.get_hm_iteration_summary()))
+            except Exception as e:
+                logger.warning("Proactive hm_summary failed: %s", e)
+            try:
+                results.append(("get_data_mismatch_per_well",
+                                 self.tools.get_data_mismatch_per_well()))
+            except Exception as e:
+                logger.warning("Proactive mismatch_per_well failed: %s", e)
+
+        # Well performance / production profiles
+        if any(k in m for k in [
+            "well", "production", "profile", "wopr", "water cut", "wcut",
+            "above expectation", "below expectation", "performing", "oil rate",
+            "rates", "producer", "injector",
+        ]):
+            try:
+                results.append(("get_well_performance_all",
+                                 self.tools.get_well_performance("all")))
+            except Exception as e:
+                logger.warning("Proactive well_performance failed: %s", e)
+
+        # Simulation / training status
+        if any(k in m for k in [
+            "simulation", "training", "pino", "surrogate", "progress",
+            "status", "loss", "epoch",
+        ]):
+            try:
+                results.append(("get_simulation_status",
+                                 self.tools.get_simulation_status()))
+            except Exception as e:
+                logger.warning("Proactive sim_status failed: %s", e)
+
+        if not results:
+            return ""
+
+        def _strip(data: dict) -> dict:
+            """Remove chart payloads and raw time-series to keep size small."""
+            out = {k: v for k, v in data.items() if k not in ("chart",)}
+            # For per-well dicts keep only summary fields, not rate arrays
+            if "per_well" in out:
+                out["per_well"] = {
+                    w: {fk: fv for fk, fv in wv.items()
+                        if fk not in ("wopr", "wwpr", "wgpr")}
+                    for w, wv in out["per_well"].items()
+                }
+            return out
+
+        lines = [
+            "## ── LIVE DATA (answer directly from this — do NOT describe the UI) ──"
+        ]
+        for name, data in results:
+            cleaned = _strip(data) if isinstance(data, dict) else data
+            lines.append(f"\n### {name}\n```json\n"
+                         f"{json.dumps(cleaned, indent=2)}\n```")
+        return "\n".join(lines)
+
     def _build_messages(
         self,
         history: list[dict],
         project_summary: str,
         rag_context: str = "",
         kg_context: str = "",
+        proactive_context: str = "",
     ) -> list[dict]:
         system_with_context = SYSTEM_PROMPT
         if project_summary:
             system_with_context += f"\n\n## Active Project Context\n{project_summary}"
         if kg_context:
-            # KG facts come first — they are precise and authoritative
             system_with_context += f"\n\n{kg_context}"
         if rag_context:
             system_with_context += f"\n\n{rag_context}"
+        if proactive_context:
+            # Injected last so it is closest to the user message and hardest to ignore
+            system_with_context += f"\n\n{proactive_context}"
 
         return [
             {"role": "system", "content": system_with_context},
