@@ -399,9 +399,9 @@ class ReservoirAgent:
 
         # HM / convergence / mismatch
         if any(k in m for k in [
-            "mismatch", "match", "convergence", "areki", "history match",
+            "mismatch", "convergence", "areki", "history match",
             "hm status", "hm result", "iteration", "summarise", "summarize",
-            "matching poorly", "poorly match",
+            "matching poorly", "poorly match", "poorly performing",
         ]):
             try:
                 results.append(("get_hm_iteration_summary",
@@ -414,17 +414,29 @@ class ReservoirAgent:
             except Exception as e:
                 logger.warning("Proactive mismatch_per_well failed: %s", e)
 
-        # Well performance / production profiles
+        # Well performance / production profiles — broad keyword set
+        # "expect" catches expectation/expectations/expected/expecting
+        # "above"/"below" catch "above and below expectations" phrasing
         if any(k in m for k in [
             "well", "production", "profile", "wopr", "water cut", "wcut",
-            "above expectation", "below expectation", "performing", "oil rate",
-            "rates", "producer", "injector",
+            "expect",           # expectation / expectations / expected
+            "above", "below",   # "above and below expectations"
+            "performing", "performance", "oil rate", "producer", "injector",
+            "which well", "show me", "rates",
         ]):
             try:
                 results.append(("get_well_performance_all",
                                  self.tools.get_well_performance("all")))
             except Exception as e:
                 logger.warning("Proactive well_performance failed: %s", e)
+            # Also pull per-well mismatch for above/below questions
+            if any(k in m for k in ["expect", "above", "below", "performing",
+                                     "mismatch", "match"]):
+                try:
+                    results.append(("get_data_mismatch_per_well",
+                                     self.tools.get_data_mismatch_per_well()))
+                except Exception as e:
+                    logger.warning("Proactive mismatch_per_well (well block) failed: %s", e)
 
         # Simulation / training status
         if any(k in m for k in [
