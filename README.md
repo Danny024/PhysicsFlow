@@ -3,11 +3,30 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v2.0.2** — Released 2026-03-14
+**Current version: v2.0.3** — Released 2026-03-14
 
 ---
 
 ## Changelog
+
+### v2.0.3 (2026-03-14) — Dashboard, AI grounding & project persistence fixes
+
+**Desktop (165/165 ViewModel tests pass)**
+
+Dashboard fixes:
+- **Wells card** — dashboard now shows the correct well count immediately after saving a new project via the wizard; loading a pre-v2.0.3 `.pfproj` (empty wells array) falls back to the Norne field default (31 wells) instead of showing 0
+- **PINO trained status** — replaced the indirect `HasBeenTrained` / `TrainingStatusText` chain with an explicit `IsPinoTrained` observable flag; `MainWindowViewModel` sets it the moment `IsTraining` flips to `false` with a finite best loss — the "Trained ✓" card now appears reliably regardless of navigation path
+- **Well serialisation** — `BuildProjectJson()` now writes the actual `Wells` collection to `"wells": [...]` in `.pfproj` files (was always `"wells": []`)
+- **Project shortcut** — desktop shortcut updated to `win-x64-v9`
+
+AI Assistant fixes:
+- **System prompt rewritten** — explicit tool-routing table maps common question patterns to required tool calls; prohibited generic UI-navigation answers for data questions
+- **Context enrichment** — `get_project_summary()` now inlines peak WOPR and water-cut per well for the above/below-expectation groups so models without tool-calling still quote real numbers
+- **Project grounding** — `context_provider.set_project()` now parses `.pfproj` JSON and seeds full Norne baseline profiles (22 producers, 9 injectors, 37 timesteps) with `above_expectation` / `below_expectation` / `on_target` status labels
+- **`get_well_performance("all")`** — returns compact per-well summary (peak WOPR, cumulative oil, water cut, status) instead of raw time-series
+- **`get_data_mismatch_per_well()`** — adds `above_expectation`, `below_expectation`, `on_target` groupings plus `worst_wells` / `best_wells`
+- **Project path forwarding** — `AgentServicer.Chat()` now correctly forwards `request.context_project` to `agent.chat(project_path=...)` (was silently dropped)
+- **Helper consolidation** — `_water_cut` and `_cumulative` helpers unified into a single section in `ReservoirTools`
 
 ### v2.0.2 (2026-03-14) — Bug-fix release
 
@@ -162,7 +181,7 @@ Key innovations over the paper:
                                              └────────────┬────────────┘
                                                           │
                     ┌─────────────────────────────────────┴──────────────────┐
-                    │           Intelligence Layer (v1.3.0)                   │
+                    │           Intelligence Layer (v1.4.0)                   │
                     │                                                         │
                     │  ┌──────────────────────┐  ┌────────────────────────┐  │
                     │  │  Hybrid RAG          │  │  Reservoir KG          │  │
