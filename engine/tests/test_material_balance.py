@@ -104,7 +104,7 @@ class TestMaterialBalance:
         # Incremental production
         dNp = np.ones(n) * 500.0
         dWp = np.ones(n) * 50.0
-        dGp = dNp * pvt['Rsi'][:n] / 1000.0
+        dGp = dNp * pvt['Rsi'] / 1000.0
 
         Np_cum = np.cumsum(dNp)
         Wp_cum = np.cumsum(dWp)

@@ -23,8 +23,8 @@ def pvt():
 
 @pytest.fixture
 def pressures():
-    """Representative pressure range in Pa (50–500 bar)."""
-    return torch.linspace(50e5, 500e5, 20)
+    """Representative pressure range in psia (≈ 34–340 bar)."""
+    return torch.linspace(500.0, 4000.0, 20)
 
 
 class TestPVTConfig:
@@ -45,9 +45,9 @@ class TestBlackOilPVT:
 
     def test_gas_viscosity_range(self, pvt, pressures):
         mu_g = pvt.mu_g(pressures)
-        # Reservoir gas: 0.01–0.05 cP = 1e-5 to 5e-5 Pa·s
-        assert (mu_g < 1.0e-2).all(), "Gas viscosity too high (> 10 cP)"
-        assert (mu_g > 1.0e-7).all(), "Gas viscosity too low"
+        # Reservoir gas: 0.01–0.05 cP
+        assert (mu_g < 0.1).all(), "Gas viscosity too high (> 0.1 cP)"
+        assert (mu_g > 0.005).all(), "Gas viscosity too low"
 
     def test_solution_gor_increases_with_pressure(self, pvt, pressures):
         Rs = pvt.Rs(pressures)
@@ -80,7 +80,7 @@ class TestBlackOilPVT:
         mu_w = pvt.mu_w(pressures)
         # Water: 0.3–1.0 cP
         assert (mu_w > 0).all()
-        assert (mu_w < 5e-3).all(), "Water viscosity should be < 5 cP"
+        assert (mu_w < 5.0).all(), "Water viscosity should be < 5 cP"
 
     def test_all_properties_returns_dict(self, pvt, pressures):
         props = pvt.all_properties(pressures)
@@ -89,7 +89,7 @@ class TestBlackOilPVT:
 
     def test_gradient_flows(self, pvt):
         """PVT ops must be differentiable for PINO training."""
-        p = torch.linspace(100e5, 300e5, 5, requires_grad=True)
+        p = torch.linspace(1000.0, 3000.0, 5, requires_grad=True)
         Bo = pvt.Bo(p)
         Bo.sum().backward()
         assert p.grad is not None
@@ -97,6 +97,6 @@ class TestBlackOilPVT:
 
     def test_batch_pressure(self, pvt):
         """PVT should work with batched 3D pressure tensors."""
-        p = torch.rand(2, 10, 10, 5) * 300e5 + 50e5
+        p = torch.rand(2, 10, 10, 5) * 3000.0 + 500.0  # psia range
         Bo = pvt.Bo(p)
         assert Bo.shape == p.shape

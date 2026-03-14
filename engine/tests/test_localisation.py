@@ -71,27 +71,27 @@ class TestLocalisationMatrix:
         n_params, n_obs = 12, 6
         param_coords = np.random.rand(n_params, 3)
         obs_coords   = np.random.rand(n_obs, 3)
-        L = np.array(build_localisation_matrix(param_coords, obs_coords, radius=5.0))
+        L = np.array(build_fn(param_coords, obs_coords, radius=5.0))
         assert L.shape == (n_params, n_obs)
 
     def test_diagonal_near_one_for_collocated(self, build_fn):
         """When param and obs are at same location, L should be 1.0."""
         coords = np.array([[0.0, 0.0, 0.0]])
-        L = np.array(build_localisation_matrix(coords, coords, radius=10.0))
+        L = np.array(build_fn(coords, coords, radius=10.0))
         assert abs(float(L[0, 0]) - 1.0) < 1e-6
 
     def test_far_cells_near_zero(self, build_fn):
         """Params far from observations should have L ≈ 0."""
         param_coords = np.array([[0.0, 0.0, 0.0]])
         obs_coords   = np.array([[100.0, 100.0, 100.0]])  # very far
-        L = np.array(build_localisation_matrix(param_coords, obs_coords, radius=5.0))
+        L = np.array(build_fn(param_coords, obs_coords, radius=5.0))
         assert abs(float(L[0, 0])) < 1e-6
 
     def test_values_in_range(self, build_fn):
         n_params, n_obs = 20, 8
         param_coords = np.random.rand(n_params, 3) * 50
         obs_coords   = np.random.rand(n_obs, 3) * 50
-        L = np.array(build_localisation_matrix(param_coords, obs_coords, radius=20.0))
+        L = np.array(build_fn(param_coords, obs_coords, radius=20.0))
         assert (L >= 0.0).all(), "Localisation weights must be non-negative"
         assert (L <= 1.0 + 1e-8).all(), "Localisation weights must be <= 1"
 

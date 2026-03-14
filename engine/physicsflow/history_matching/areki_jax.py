@@ -66,24 +66,43 @@ class AREKIEngine:
     def __init__(
         self,
         forward_fn: Callable,
-        d_obs: np.ndarray,
-        Gamma: np.ndarray,
+        d_obs: np.ndarray | None = None,
+        Gamma: np.ndarray | None = None,
         cfg: AREKIConfig | None = None,
         localisation_matrix: np.ndarray | None = None,
+        # Aliases used by tests and gRPC servicer
+        observations: np.ndarray | None = None,
+        obs_error_cov: np.ndarray | None = None,
     ):
         self.forward_fn = forward_fn
         self.cfg = cfg or AREKIConfig()
         self.key = jax.random.PRNGKey(self.cfg.random_seed)
+
+        # Resolve aliases
+        if d_obs is None and observations is not None:
+            d_obs = observations
+        if Gamma is None and obs_error_cov is not None:
+            Gamma = obs_error_cov
+
+        if d_obs is None:
+            raise ValueError("d_obs (or observations) must be provided")
+        if Gamma is None:
+            raise ValueError("Gamma (or obs_error_cov) must be provided")
+
+        # Store as numpy for numpy wrapper methods
+        self.observations = np.array(d_obs, dtype=np.float32)
+        self.obs_error_cov = np.array(Gamma, dtype=np.float32)
 
         # Move to JAX arrays
         self.d_obs = jnp.array(d_obs, dtype=jnp.float32)            # [N_obs]
         self.N_obs = len(d_obs)
 
         # Gamma: diagonal covariance → store as 1D for efficient operations
-        if Gamma.ndim == 1:
-            self.Gamma_diag = jnp.array(Gamma, dtype=jnp.float32)
+        Gamma_arr = np.array(Gamma, dtype=np.float32)
+        if Gamma_arr.ndim == 1:
+            self.Gamma_diag = jnp.array(Gamma_arr, dtype=jnp.float32)
         else:
-            self.Gamma_diag = jnp.diag(jnp.array(Gamma, dtype=jnp.float32))
+            self.Gamma_diag = jnp.diag(jnp.array(Gamma_arr, dtype=jnp.float32))
 
         self.loc_matrix = (
             jnp.array(localisation_matrix, dtype=jnp.float32)
@@ -266,3 +285,69 @@ class AREKIEngine:
             "s_cumulative": s,
             "converged": s >= 1.0,
         }
+
+    # ── NumPy wrapper methods (for testing without JAX overhead) ──────────────
+
+    def _kalman_update_numpy(
+        self,
+        params: np.ndarray,   # [N_ens, N_params]
+        G: np.ndarray,         # [N_ens, N_obs]
+        alpha: float,
+    ) -> np.ndarray:
+        """
+        Pure-NumPy Kalman update step.
+        Accepts and returns [N_ens, N_params] arrays (row-per-ensemble layout).
+        Uses self.observations and self.obs_error_cov for the update.
+        """
+        N = params.shape[0]
+        params_mean = params.mean(axis=0, keepdims=True)   # [1, N_params]
+        G_mean      = G.mean(axis=0, keepdims=True)         # [1, N_obs]
+        dA = params - params_mean   # [N_ens, N_params]
+        dG = G - G_mean              # [N_ens, N_obs]
+
+        # Cyd: [N_params, N_obs]
+        Cyd = (1.0 / (N - 1)) * dA.T @ dG
+        # CnGG: [N_obs, N_obs]
+        CnGG = (1.0 / (N - 1)) * dG.T @ dG
+
+        # Observation error covariance (diagonal)
+        obs_cov = self.obs_error_cov
+        if obs_cov.ndim == 2:
+            Gamma_diag = np.diag(obs_cov)
+        else:
+            Gamma_diag = obs_cov
+
+        reg = CnGG + alpha * np.diag(Gamma_diag)    # [N_obs, N_obs]
+        K = self._svd_solve_numpy(Cyd, reg)          # [N_params, N_obs]
+
+        # Perturbed observations
+        noise = np.random.randn(N, G.shape[1]) * np.sqrt(Gamma_diag)[None, :]
+        d_perturbed = self.observations[None, :] + noise   # [N_ens, N_obs]
+        innovation  = d_perturbed - G                       # [N_ens, N_obs]
+
+        # Update: [N_ens, N_params]
+        params_new = params + (K @ innovation.T).T
+        return params_new
+
+    @staticmethod
+    def _svd_solve_numpy(Cyd: np.ndarray, A: np.ndarray) -> np.ndarray:
+        """NumPy SVD-based solve: K = Cyd · A⁻¹."""
+        U, S, Vt = np.linalg.svd(A, full_matrices=False)
+        S_inv = np.where(S > 1e-10 * S[0], 1.0 / S, 0.0)
+        A_inv = (Vt.T * S_inv) @ U.T
+        return Cyd @ A_inv
+
+    def _compute_alpha_numpy(
+        self, G: np.ndarray, mismatch: float, iteration: int
+    ) -> float:
+        """
+        NumPy version of adaptive alpha computation.
+
+        Large mismatch → large alpha (more regularisation, smaller step).
+        Small mismatch (near convergence) → small alpha (finer update).
+        """
+        N_obs = float(self.N_obs)
+        phi_n = max(mismatch ** 2, 1e-8)
+        # Large phi_n → large alpha (cautious; high regularisation)
+        alpha = max(phi_n / (2.0 * N_obs), self.cfg.alpha_init * 0.1)
+        return float(alpha)

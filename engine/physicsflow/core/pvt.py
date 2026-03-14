@@ -20,11 +20,14 @@ class PVTConfig:
     p_ini: float = 1_000.0    # initial reservoir pressure, psia
     muw: float = 0.5          # water viscosity, cP (assumed constant)
     bw: float = 1.0           # water FVF (assumed constant)
+    api_gravity: float = 36.0        # oil API gravity (°API)
+    gas_gravity: float = 0.65        # gas specific gravity (air=1)
 
     @classmethod
     def norne_defaults(cls) -> "PVTConfig":
         """PVT configuration matching the Norne benchmark."""
-        return cls(p_bub=4_000.0, p_atm=14.696, cfo=1e-5, p_ini=1_000.0)
+        return cls(p_bub=4_000.0, p_atm=14.696, cfo=1e-5, p_ini=1_000.0,
+                   api_gravity=36.0, gas_gravity=0.65)
 
 
 class BlackOilPVT(nn.Module):
@@ -86,12 +89,12 @@ class BlackOilPVT(nn.Module):
         p_bub = self.p_bub
         p_atm = self.p_atm
 
-        # Below bubble point
-        bo_below = 1.0 / torch.exp(-8e-5 * (p_atm - p))
+        # Below bubble point: Bo increases with pressure (oil expands at reservoir P)
+        bo_below = 1.0 / torch.exp(8e-5 * (p_atm - p))
 
-        # Above bubble point
-        bo_ref = torch.exp(-8e-5 * (p_atm - p_bub))   # Bo at bubble point
-        bo_above = 1.0 / (bo_ref * torch.exp(-self.cfo * (p - p_bub)))
+        # Above bubble point: slight compression relative to Bo at bubble point
+        bo_ref = 1.0 / torch.exp(8e-5 * (p_atm - p_bub))   # Bo at bubble point
+        bo_above = bo_ref * torch.exp(-self.cfo * (p - p_bub))
 
         return torch.where(p < p_bub, bo_below, bo_above)
 
@@ -100,10 +103,13 @@ class BlackOilPVT(nn.Module):
     def Bg(self, p: torch.Tensor) -> torch.Tensor:
         """Gas FVF [RCF/SCF] below bubble point.
 
-        Bg = 1 / exp(1.7e-3·(p_atm - p))
+        Bg = exp(1.7e-3·(p_atm - p))
+
+        At standard conditions (p = p_atm): Bg = 1.
+        At reservoir pressure (p > p_atm): Bg < 1 (gas compressed). ✓
         """
         dp = self.p_atm - p
-        return 1.0 / torch.exp(1.7e-3 * dp)
+        return torch.exp(1.7e-3 * dp)
 
     # ── Oil viscosity (simplified dead-oil Beal correlation) ─────────────────
 

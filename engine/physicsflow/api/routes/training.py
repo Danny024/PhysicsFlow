@@ -42,7 +42,7 @@ async def start_training(request: Request, body: TrainingStartRequest):
                 device=body.device,
                 output_dir=str(cfg.models_dir),
             )
-            pretrain_norne(pcfg)
+            pretrain_norne(pcfg, project_id=body.project_id, run_id=run_id)
             db_svc.complete_run(run_id)
         except Exception as exc:
             db_svc.fail_run(run_id, str(exc))

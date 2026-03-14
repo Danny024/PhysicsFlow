@@ -56,14 +56,15 @@ async def simulation_status(request: Request):
     """
     context = request.app.state.context
     try:
+        state = context.simulation_state or {}
         return {
-            "status":          context.simulation_status,
-            "progress":        context.simulation_progress,
-            "current_epoch":   context.current_epoch,
-            "total_epochs":    context.total_epochs,
-            "current_loss":    context.current_loss,
-            "model_type":      context.model_type,
-            "training_active": context.training_active,
+            "status":          state.get("status", "idle"),
+            "progress":        state.get("progress", 0.0),
+            "current_epoch":   getattr(context, "current_epoch", 0),
+            "total_epochs":    getattr(context, "total_epochs", 0),
+            "current_loss":    getattr(context, "current_loss", None),
+            "model_type":      state.get("model_type", None),
+            "training_active": getattr(context, "training_active", False),
         }
     except AttributeError as e:
         raise HTTPException(status_code=503, detail=f"Context unavailable: {e}")

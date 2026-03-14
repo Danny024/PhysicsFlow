@@ -26,7 +26,7 @@ def gaspari_cohn(distance: jnp.ndarray, radius: float) -> jnp.ndarray:
     distance : array of distances (any shape)
     radius   : localisation radius (half-width of support)
     """
-    r = distance / radius   # normalised distance, support is [0, 2]
+    r = jnp.abs(distance) / radius   # normalised distance, support is [0, 2]
     r = jnp.clip(r, 0.0, 2.0)
 
     # Piece 1: 0 ≤ r ≤ 1

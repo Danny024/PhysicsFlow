@@ -3,15 +3,51 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v2.0.1** — Released 2026-03-10
+**Current version: v2.0.2** — Released 2026-03-14
+
+---
+
+## Changelog
+
+### v2.0.2 (2026-03-14) — Bug-fix release
+
+**Test suite: 62/62 tests pass (was 33 failures + 9 errors)**
+
+Core physics fixes:
+- **`BlackOilPVT.Bo()`** — corrected oil FVF formula; was physically inverted giving Bo < 1 at reservoir pressure
+- **`BlackOilPVT.Bg()`** — corrected gas FVF formula; was inverted (Bg increased with pressure instead of decreasing)
+- **`gaspari_cohn()`** — fixed asymmetry; negative distances now handled via `jnp.abs()` so GC(−d) = GC(d)
+- **`ReservoirGrid.transmissibility_x/y/z()`** — fixed to return face-centred arrays `(nx−1, ny, nz)` using harmonic-mean permeability instead of cell-centred `np.roll` arrays
+
+Grid & well model:
+- **`GridConfig.__post_init__`** — added validation rejecting non-positive nx/ny/nz
+- **`ReservoirGrid`** — added `n_cells`, `n_active_cells` properties and `flatten()` / `unflatten()` convenience aliases
+- **`Perforation`** — added `skin` and `wellbore_radius` fields
+- **`WellConfig`** — added `bhp_limit` field and `is_injector()` helper
+- **`WellType`** — added generic `INJECTOR` enum value (alongside `WATER_INJECTOR`, `GAS_INJECTOR`)
+- **`PeacemannWellModel`** — updated per-well API: `productivity_index(well, k)`, `compute_oil_rates(well, pressure, bhp, …)`, `compute_injection_rates(well, pressure, bhp_inj, …)`; constructor now accepts optional `wells` list
+- **`parse_compdat()`** — now accepts multi-line string or list of strings; returns `list[WellConfig]` with perforation objects
+
+REST API & database:
+- **`GET /api/v1/simulation/status`** — fixed `AttributeError` (`context.simulation_status` → `context.simulation_state`)
+- **`AuditLogSchema.id`** — fixed type mismatch (`str` → `int`)
+- **`POST /api/v1/simulation/run`** — implemented missing `_run_forward_surrogate` in `simulation_service.py`
+- **`POST /api/v1/training/start`** — fixed FK constraint error; `pretrain_norne()` now accepts `project_id` and `run_id` parameters
+- **`POST /api/v1/hm/start`** — implemented missing `_run_areki` in `hm_service.py`
+
+History matching:
+- **`AREKIEngine.__init__`** — added `observations` / `obs_error_cov` parameter aliases for test/gRPC compatibility
+- **`AREKIEngine`** — added `_kalman_update_numpy`, `_svd_solve_numpy`, `_compute_alpha_numpy` pure-NumPy wrappers
+- **`PVTConfig`** — added `api_gravity` and `gas_gravity` fields to `norne_defaults()`
 
 ---
 
 ## Table of Contents
 
-1. [What Is PhysicsFlow?](#what-is-physicsflow)
-2. [Key Capabilities](#key-capabilities)
-3. [Architecture Overview](#architecture-overview)
+1. [Changelog](#changelog)
+2. [What Is PhysicsFlow?](#what-is-physicsflow)
+3. [Key Capabilities](#key-capabilities)
+4. [Architecture Overview](#architecture-overview)
 4. [Technology Stack](#technology-stack)
 5. [Project Structure](#project-structure)
 6. [Database Layer](#database-layer)

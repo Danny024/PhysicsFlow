@@ -190,3 +190,57 @@ class HistoryMatchingServicer:
             return p10, p50, p90
         except Exception:
             return None, None, None
+
+
+def _run_areki(cfg, context, db_svc, project_id: str, hm_run_id: str,
+               sim_run_id: str, body) -> None:
+    """
+    Standalone REST callable that runs αREKI history matching and records
+    per-iteration metrics to the database.
+
+    Wraps the AREKIEngine with a synthetic forward model so the REST
+    workflow is end-to-end functional.  Replace the forward_fn with the
+    real PINO surrogate for production use.
+    """
+    from ..history_matching.areki_jax import AREKIEngine, AREKIConfig
+
+    log.info("_run_areki: project=%s run=%s n_ens=%d max_iter=%d",
+             project_id, hm_run_id, body.n_ensemble, body.max_iterations)
+
+    n_params = 46 * 112 * 22   # Norne K-field parameter count
+    n_obs    = 10               # synthetic observation count
+
+    areki_cfg = AREKIConfig(
+        n_ensemble=body.n_ensemble,
+        max_iterations=body.max_iterations,
+        localisation_radius=body.localisation_radius,
+        alpha_init=body.alpha_init,
+    )
+
+    def forward_fn(params: np.ndarray) -> np.ndarray:
+        """Synthetic linear forward model (replace with PINO in production)."""
+        return params[:n_obs] * 0.5 + np.random.randn(n_obs) * 10.0
+
+    engine = AREKIEngine(
+        cfg=areki_cfg,
+        forward_fn=forward_fn,
+        d_obs=np.zeros(n_obs),
+        Gamma=np.eye(n_obs) * 1e4,
+    )
+
+    initial_params = np.random.randn(n_params, body.n_ensemble).astype("float32")
+    _, history = engine.run(initial_params)
+
+    for metrics in history:
+        db_svc.record_hm_iteration(
+            project_id=project_id,
+            hm_run_id=hm_run_id,
+            iteration=metrics["iteration"],
+            mismatch=metrics["data_mismatch"],
+            alpha=metrics["alpha"],
+            s_cumulative=metrics["s_cumulative"],
+            converged=metrics["converged"],
+        )
+        context.append_hm_iteration(metrics)
+
+    log.info("_run_areki completed: %d iterations", len(history))

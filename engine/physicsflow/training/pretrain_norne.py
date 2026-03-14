@@ -183,9 +183,20 @@ def _synthetic_simulation(K, phi, P0, Sw0, T: int, rng) -> np.ndarray:
 # Training loop
 # ─────────────────────────────────────────────────────────────────────────────
 
-def pretrain_norne(cfg: PretrainConfig) -> Path:
+def pretrain_norne(cfg: PretrainConfig, project_id: str | None = None,
+                   run_id: str | None = None) -> Path:
     """
     Pre-train FNO3d PINO surrogate on synthetic Norne ensemble data.
+
+    Parameters
+    ----------
+    cfg        : training hyperparameters
+    project_id : DB project UUID to associate this run with. When called
+                 from the REST API the route passes the real project ID.
+                 Defaults to a sentinel value for standalone CLI use.
+    run_id     : existing DB run_id created by the caller.  When provided
+                 pretrain_norne records epochs against it instead of
+                 creating a duplicate run record.
 
     Returns the path to the best saved checkpoint.
     """
@@ -199,9 +210,14 @@ def pretrain_norne(cfg: PretrainConfig) -> Path:
     logger.info("Pre-training device: {}", device)
 
     db = DatabaseService.instance()
-    project_id = "norne_pretrain"
-    run_id = db.start_run(project_id, "training",
-                          config={"type": "pretrain_norne", **cfg.__dict__})
+    # Use caller-supplied project_id/run_id when available (REST path).
+    # Fall back to the standalone sentinel only for direct CLI invocation.
+    _owns_run = run_id is None
+    if project_id is None:
+        project_id = "norne_pretrain"
+    if _owns_run:
+        run_id = db.start_run(project_id, "training",
+                              config={"type": "pretrain_norne", **cfg.__dict__})
     db.audit("pretrain.started",
              f"PINO pre-training started: {cfg.epochs} epochs, N={cfg.ensemble_size}",
              project_id=project_id)

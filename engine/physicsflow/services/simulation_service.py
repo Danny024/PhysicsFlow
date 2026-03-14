@@ -325,6 +325,56 @@ class _DummyDataset(torch.utils.data.Dataset):
         }
 
 
+def _run_forward_surrogate(cfg, context, run_id: str, n_timesteps: int = 20) -> None:
+    """
+    Standalone REST callable that runs a forward simulation using the Norne
+    default grid and a synthetic (random) permeability field.  Stores
+    pressure / Sw snapshots in the shared context for downstream queries.
+
+    In a full deployment this would load the project's trained PINO model
+    and real K/phi from the project file.  Here we use the dummy dataset
+    path so the REST workflow is end-to-end functional.
+    """
+    from ..core.grid import GridConfig, ReservoirGrid
+    from ..core.pvt import PVTConfig, BlackOilPVT
+    from ..core.wells import norne_default_wells
+
+    log.info("_run_forward_surrogate: run_id=%s n_timesteps=%d", run_id, n_timesteps)
+    context.update_simulation_state({"status": "running", "progress": 0.0})
+
+    try:
+        grid_cfg = GridConfig.norne()
+        grid = ReservoirGrid(grid_cfg)
+        pvt  = BlackOilPVT(PVTConfig.norne_defaults())
+        wells = norne_default_wells()
+
+        snapshots = []
+        import numpy as np
+        p_field = np.random.rand(*grid_cfg.shape).astype("float32") * 200.0 + 100.0
+        sw_field = np.random.rand(*grid_cfg.shape).astype("float32") * 0.4 + 0.2
+
+        for t in range(n_timesteps):
+            # Simplified linear depletion: pressure declines, Sw increases
+            p_t  = p_field * (1.0 - 0.002 * t)
+            sw_t = np.clip(sw_field + 0.005 * t, 0.0, 1.0)
+            snapshots.append({"pressure": p_t.copy(), "sw": sw_t.copy()})
+            progress = (t + 1) / n_timesteps
+            context.update_simulation_state({"status": "running", "progress": progress})
+
+        context.update_field_arrays(
+            pressure=np.stack([s["pressure"] for s in snapshots], axis=-1),
+            sw=np.stack([s["sw"] for s in snapshots], axis=-1),
+            sg=np.zeros((*grid_cfg.shape, n_timesteps), dtype="float32"),
+        )
+        context.update_simulation_state({"status": "completed", "progress": 1.0})
+        log.info("_run_forward_surrogate completed: run_id=%s", run_id)
+
+    except Exception as exc:
+        log.exception("_run_forward_surrogate failed: %s", exc)
+        context.update_simulation_state({"status": "error", "progress": 0.0})
+        raise
+
+
 def _minimal_opm_deck(request) -> str:
     """Generate a minimal Eclipse DATA deck for OPM FLOW."""
     g = request.grid_spec

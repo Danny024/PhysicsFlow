@@ -22,6 +22,13 @@ class GridConfig:
     dz: float = 20.0   # ft
     depth: float = 4_000.0   # reservoir depth, ft
 
+    def __post_init__(self):
+        if self.nx <= 0 or self.ny <= 0 or self.nz <= 0:
+            raise ValueError(
+                f"Grid dimensions must be positive, got nx={self.nx}, "
+                f"ny={self.ny}, nz={self.nz}"
+            )
+
     @classmethod
     def norne(cls) -> "GridConfig":
         """Norne field benchmark grid (46×112×22, 50×50×20 ft cells)."""
@@ -97,40 +104,44 @@ class ReservoirGrid:
     # ── Transmissibility ──────────────────────────────────────────────────────
 
     def transmissibility_x(self) -> np.ndarray:
-        """Inter-cell transmissibility in X direction [mD·ft²/ft = mD·ft]."""
+        """Inter-cell transmissibility in X direction [mD·ft].
+
+        Returns face-centred array of shape (nx-1, ny, nz) — one value
+        per cell interface, using harmonic-mean permeability.
+        """
         dx, dy, dz = self.cfg.dx, self.cfg.dy, self.cfg.dz
         k = self.perm_x * self.ntg
-        # Harmonic mean between adjacent cells
-        k_left  = k[:, :, :]
-        k_right = np.roll(k, -1, axis=0)
+        k_l = k[:-1, :, :]   # left cell  [nx-1, ny, nz]
+        k_r = k[1:,  :, :]   # right cell [nx-1, ny, nz]
         T = np.where(
-            k_left + k_right > 0,
-            2 * k_left * k_right / (k_left + k_right),
+            k_l + k_r > 0,
+            2 * k_l * k_r / (k_l + k_r),
             0.0
         )
-        T = T * (dy * dz) / dx  # [mD·ft²/ft]
-        return T.astype(np.float32)
+        return (T * (dy * dz) / dx).astype(np.float32)
 
     def transmissibility_y(self) -> np.ndarray:
+        """Inter-cell transmissibility in Y direction, shape (nx, ny-1, nz)."""
         dx, dy, dz = self.cfg.dx, self.cfg.dy, self.cfg.dz
         k = self.perm_y * self.ntg
-        k_bot = k
-        k_top = np.roll(k, -1, axis=1)
+        k_l = k[:, :-1, :]
+        k_r = k[:, 1:,  :]
         T = np.where(
-            k_bot + k_top > 0,
-            2 * k_bot * k_top / (k_bot + k_top),
+            k_l + k_r > 0,
+            2 * k_l * k_r / (k_l + k_r),
             0.0
         )
         return (T * (dx * dz) / dy).astype(np.float32)
 
     def transmissibility_z(self) -> np.ndarray:
+        """Inter-cell transmissibility in Z direction, shape (nx, ny, nz-1)."""
         dx, dy, dz = self.cfg.dx, self.cfg.dy, self.cfg.dz
         k = self.perm_z * self.ntg
-        k_bot = k
-        k_top = np.roll(k, -1, axis=2)
+        k_l = k[:, :, :-1]
+        k_r = k[:, :, 1: ]
         T = np.where(
-            k_bot + k_top > 0,
-            2 * k_bot * k_top / (k_bot + k_top),
+            k_l + k_r > 0,
+            2 * k_l * k_r / (k_l + k_r),
             0.0
         )
         return (T * (dx * dy) / dz).astype(np.float32)
@@ -138,8 +149,18 @@ class ReservoirGrid:
     # ── Active cell helpers ───────────────────────────────────────────────────
 
     @property
+    def n_cells(self) -> int:
+        """Total number of grid cells (Nx × Ny × Nz)."""
+        return self.cfg.n_cells
+
+    @property
     def n_active(self) -> int:
         return int(self.actnum.sum())
+
+    @property
+    def n_active_cells(self) -> int:
+        """Alias for n_active."""
+        return self.n_active
 
     def active_mask(self) -> np.ndarray:
         return self.actnum > 0.5
@@ -153,6 +174,14 @@ class ReservoirGrid:
         out = np.full(self.cfg.shape, fill, dtype=np.float32)
         out[self.active_mask()] = vec
         return out
+
+    def flatten(self, field: np.ndarray) -> np.ndarray:
+        """Alias for flatten_active: [Nx, Ny, Nz] → [N_active]."""
+        return self.flatten_active(field)
+
+    def unflatten(self, vec: np.ndarray, fill: float = 0.0) -> np.ndarray:
+        """Alias for unflatten_active: [N_active] → [Nx, Ny, Nz]."""
+        return self.unflatten_active(vec, fill)
 
     # ── PyTorch export ────────────────────────────────────────────────────────
 

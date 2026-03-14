@@ -199,7 +199,7 @@ class ModelVersionSchema(_ORM):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class AuditLogSchema(_ORM):
-    id: str
+    id: int
     event_type: str
     description: Optional[str]
     project_id: Optional[str]

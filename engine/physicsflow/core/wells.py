@@ -16,6 +16,7 @@ import torch
 
 class WellType(Enum):
     PRODUCER = "PRODUCER"
+    INJECTOR = "INJECTOR"
     WATER_INJECTOR = "WATER_INJECTOR"
     GAS_INJECTOR = "GAS_INJECTOR"
 
@@ -28,6 +29,8 @@ class Perforation:
     k: int
     dz: float = 20.0   # perforation interval thickness, ft
     kh: float | None = None   # permeability-height product, mD·ft (auto if None)
+    skin: float = 0.0
+    wellbore_radius: float = 0.108   # ft
 
 
 @dataclass
@@ -41,6 +44,7 @@ class WellConfig:
     # Constraints
     pwf: float = 100.0      # BHP constraint, psia (producers)
     rate: float = 500.0     # rate constraint, STB/day (injectors)
+    bhp_limit: float | None = None   # optional BHP limit (Pa or psia depending on context)
 
     @property
     def i(self) -> int:
@@ -51,6 +55,11 @@ class WellConfig:
     def j(self) -> int:
         return self.perforations[0].j if self.perforations else 0
 
+    def is_injector(self) -> bool:
+        return self.well_type in (
+            WellType.INJECTOR, WellType.WATER_INJECTOR, WellType.GAS_INJECTOR
+        )
+
 
 class PeacemannWellModel:
     """
@@ -59,43 +68,45 @@ class PeacemannWellModel:
     J = (2π · K · kr · DZ) / (μ · B · (ln(RE/rwell) + skin))
     q = J · (p_avg - pwf)
 
-    Vectorised over all wells and ensemble members simultaneously.
+    Supports both single-well API (pass well to each method) and
+    multi-well API (pass wells list to constructor for batch operations).
     """
 
-    RE = 200.0    # drainage radius, ft (equivalent radius for structured grid)
+    RE = 200.0    # drainage radius, ft
 
-    def __init__(self, wells: list[WellConfig], grid_cfg):
-        self.wells = wells
+    def __init__(self, wells: list[WellConfig] | None = None, grid_cfg=None):
+        self.wells = wells or []
         self.grid_cfg = grid_cfg
-        self.producers = [w for w in wells if w.well_type == WellType.PRODUCER]
-        self.water_inj = [w for w in wells if w.well_type == WellType.WATER_INJECTOR]
-        self.gas_inj   = [w for w in wells if w.well_type == WellType.GAS_INJECTOR]
+        self.producers = [w for w in self.wells if w.well_type == WellType.PRODUCER]
+        self.water_inj = [w for w in self.wells
+                          if w.well_type in (WellType.INJECTOR, WellType.WATER_INJECTOR)]
+        self.gas_inj   = [w for w in self.wells if w.well_type == WellType.GAS_INJECTOR]
 
     def productivity_index(
         self,
-        k: torch.Tensor,       # [Nx, Ny, Nz] permeability, mD
-        kr: torch.Tensor,      # [Nx, Ny, Nz] relative permeability
-        mu: torch.Tensor,      # [Nx, Ny, Nz] viscosity, cP
-        B:  torch.Tensor,      # [Nx, Ny, Nz] FVF
         well: WellConfig,
+        k: torch.Tensor,    # [Nx, Ny, Nz] permeability, mD
+        kr: torch.Tensor | None = None,   # relative permeability (default 1.0)
+        mu: torch.Tensor | None = None,   # viscosity (default 1.0 cP)
+        B: torch.Tensor | None = None,    # FVF (default 1.0)
     ) -> torch.Tensor:
         """
         Compute productivity index J [STB/day/psia] for a single well.
-
         Sums contributions from all perforations.
         """
         J_total = torch.zeros(1, device=k.device)
 
         for perf in well.perforations:
-            i, j, kk = perf.i, perf.j, perf.k
+            ii, jj, kk = perf.i, perf.j, perf.k
             dz = perf.dz
 
-            k_cell  = k[i, j, kk]
-            kr_cell = kr[i, j, kk]
-            mu_cell = mu[i, j, kk]
-            B_cell  = B[i, j, kk]
+            k_cell  = k[ii, jj, kk]
+            kr_cell = kr[ii, jj, kk] if kr is not None else torch.ones(1, device=k.device)[0]
+            mu_cell = mu[ii, jj, kk] if mu is not None else torch.ones(1, device=k.device)[0]
+            B_cell  = B[ii, jj, kk]  if B  is not None else torch.ones(1, device=k.device)[0]
 
-            log_term = math.log(self.RE / well.rwell) + well.skin
+            rw = perf.wellbore_radius if perf.wellbore_radius > 0 else well.rwell
+            log_term = math.log(self.RE / rw) + perf.skin + well.skin
             J_perf = (2 * math.pi * k_cell * kr_cell * dz) / (
                 mu_cell * B_cell * log_term
             )
@@ -105,41 +116,67 @@ class PeacemannWellModel:
 
     def compute_oil_rates(
         self,
+        well: WellConfig,
         pressure: torch.Tensor,   # [Nx, Ny, Nz]
-        kro: torch.Tensor,         # [Nx, Ny, Nz]
-        k: torch.Tensor,           # [Nx, Ny, Nz]
+        bhp: float,
+        mu_o: torch.Tensor,
+        Bo: torch.Tensor,
+        k: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute oil production rate for a single producer well [STB/day].
+        """
+        p_cells = torch.stack([pressure[p.i, p.j, p.k] for p in well.perforations])
+        p_avg = p_cells.mean()
+        J = self.productivity_index(well, k, mu=mu_o, B=Bo)
+        q = J * (p_avg - bhp)
+        return torch.clamp(q, min=0.0)
+
+    def compute_injection_rates(
+        self,
+        well: WellConfig,
+        pressure: torch.Tensor,   # [Nx, Ny, Nz]
+        bhp_inj: float,
+        mu: torch.Tensor,
+        B: torch.Tensor,
+        k: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute injection rate for a single injector well [STB/day].
+        Positive when bhp_inj > reservoir pressure.
+        """
+        p_cells = torch.stack([pressure[p.i, p.j, p.k] for p in well.perforations])
+        p_avg = p_cells.mean()
+        J = self.productivity_index(well, k, mu=mu, B=B)
+        q = J * (bhp_inj - p_avg)
+        return torch.clamp(q, min=0.0)
+
+    # ── Batch helpers (used when wells list is passed to constructor) ──────────
+
+    def compute_all_oil_rates(
+        self,
+        pressure: torch.Tensor,
+        kro: torch.Tensor,
+        k: torch.Tensor,
         mu_o: torch.Tensor,
         Bo: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """
-        Compute oil production rate for all producer wells.
-
-        Returns dict: well_name → q_oil [STB/day]
-        """
+        """Batch version: compute oil rates for all producers. Returns dict."""
         rates = {}
         for well in self.producers:
-            # Average pressure over perforations
-            p_cells = torch.stack([
-                pressure[p.i, p.j, p.k] for p in well.perforations
-            ])
+            p_cells = torch.stack([pressure[p.i, p.j, p.k] for p in well.perforations])
             p_avg = p_cells.mean()
-
-            J = self.productivity_index(k, kro, mu_o, Bo, well)
+            J = self.productivity_index(well, k, kro, mu_o, Bo)
             q = J * (p_avg - well.pwf)
-            q = torch.clamp(q, min=0.0)   # no negative production
-            rates[well.name] = q
-
+            rates[well.name] = torch.clamp(q, min=0.0)
         return rates
 
-    def compute_injection_rates(
+    def compute_all_injection_rates(
         self,
         pressure: torch.Tensor,
         k: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """
-        Return injection rate (constrained to well.rate if BHP not violated).
-        Simple constraint: inject at specified rate up to max BHP.
-        """
+        """Batch version: injection rates for all injectors. Returns dict."""
         rates = {}
         for well in self.water_inj + self.gas_inj:
             rates[well.name] = torch.tensor(well.rate, device=pressure.device)
@@ -154,20 +191,31 @@ class PeacemannWellModel:
 
 # ── Eclipse COMPDAT parser ────────────────────────────────────────────────────
 
-def parse_compdat(compdat_lines: list[str]) -> list[tuple[str, int, int, int, int]]:
+def parse_compdat(compdat_input) -> list[WellConfig]:
     """
-    Parse COMPDAT keyword lines into (well_name, i, j, k1, k2) tuples.
+    Parse COMPDAT keyword lines into a list of WellConfig objects.
+
+    Accepts either a multi-line string or a list of strings.
 
     COMPDAT format:
-        'WELL-A'  10  20  3  5  'OPEN'  /
-    Returns 0-based indices.
+        'WELL-A'  10  20  3  5  'OPEN'  1*  0.108  /
+    Returns WellConfig objects with 0-based perforation indices.
     """
-    connections = []
-    for line in compdat_lines:
+    if isinstance(compdat_input, str):
+        lines = compdat_input.split('\n')
+    else:
+        lines = list(compdat_input)
+
+    well_perfs: dict[str, list[Perforation]] = {}
+
+    for line in lines:
         line = line.strip()
-        if not line or line.startswith("--"):
+        if not line or line.startswith("--") or line in ("COMPDAT", "/"):
             continue
-        if line == "/":
+        # Remove trailing /
+        if line.endswith("/"):
+            line = line[:-1].strip()
+        if not line:
             continue
         parts = line.replace("'", "").split()
         if len(parts) < 5:
@@ -178,10 +226,26 @@ def parse_compdat(compdat_lines: list[str]) -> list[tuple[str, int, int, int, in
             j = int(parts[2]) - 1
             k1 = int(parts[3]) - 1
             k2 = int(parts[4]) - 1
-            connections.append((name, i, j, k1, k2))
+            # Extract wellbore radius from field 8 if present and not '1*'
+            rw = 0.108  # default, ft
+            if len(parts) > 7 and parts[7] not in ('1*', '1'):
+                try:
+                    rw = float(parts[7])
+                except ValueError:
+                    pass
+            if name not in well_perfs:
+                well_perfs[name] = []
+            for k in range(k1, k2 + 1):
+                well_perfs[name].append(
+                    Perforation(i=i, j=j, k=k, skin=0.0, wellbore_radius=rw)
+                )
         except (ValueError, IndexError):
             continue
-    return connections
+
+    return [
+        WellConfig(name=name, well_type=WellType.PRODUCER, perforations=perfs)
+        for name, perfs in well_perfs.items()
+    ]
 
 
 # ── Norne default well configuration ─────────────────────────────────────────
@@ -238,7 +302,7 @@ def norne_default_wells() -> list[WellConfig]:
         perfs = [Perforation(i=i, j=j, k=k, dz=20.0) for k in range(22)]
         wells.append(WellConfig(
             name=name,
-            well_type=WellType.WATER_INJECTOR,
+            well_type=WellType.INJECTOR,
             perforations=perfs,
             rate=500.0,
         ))
