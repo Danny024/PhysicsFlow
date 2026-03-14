@@ -5,6 +5,8 @@
 
 **Current version: v2.0.5** — Released 2026-03-14
 
+![PhysicsFlow Demo](demo.gif)
+
 ---
 
 ## Changelog
