@@ -150,13 +150,23 @@ class ReservoirAgent:
             full_response: str (only on is_done=True)
             chart_data   : dict | None
         """
-        if not OLLAMA_AVAILABLE:
-            yield from self._mock_response(message)
-            return
-
         # Update project context
         if project_path:
             self.context_provider.set_project(project_path)
+
+        # ── Direct answer bypass (no LLM required) ──────────────────────────
+        # Handles data queries from tools — works even without Ollama.
+        # This must run before the OLLAMA_AVAILABLE gate so the demo / HF
+        # Space path gets real data answers without a local model installed.
+        direct_gen = self._try_direct_answer(session_id, message)
+        if direct_gen is not None:
+            yield from direct_gen
+            return
+
+        # Non-data questions require the LLM
+        if not OLLAMA_AVAILABLE:
+            yield from self._mock_response(message)
+            return
 
         history = self._get_history(session_id)
 
@@ -200,17 +210,7 @@ class ReservoirAgent:
         if proactive_context:
             logger.debug("Proactive tool context injected (%d chars)", len(proactive_context))
 
-        # ── Direct answer bypass ───────────────────────────────────────────
-        # For well-defined data queries, build the formatted answer directly
-        # from tool results without involving the LLM.  Small models
-        # (phi3:mini, etc.) hallucinate even when the data is injected in the
-        # system prompt, so for these questions we skip the model entirely.
-        direct_gen = self._try_direct_answer(session_id, message)
-        if direct_gen is not None:
-            yield from direct_gen
-            return
-
-        # Append user message to history (LLM path only)
+        # Append user message to history
         history.append({"role": "user", "content": message})
 
         full_response = ""
@@ -713,10 +713,16 @@ class ReservoirAgent:
         }
 
     def _mock_response(self, message: str) -> Generator[dict, None, None]:
-        """Fallback when Ollama is not installed."""
+        """Fallback when Ollama is not installed (non-data questions in demo mode)."""
         response = (
-            "Ollama is not installed or not running. Please install it from "
-            "https://ollama.com and pull a model: `ollama pull phi3:mini`"
+            "I'm running in demo mode — no local LLM is connected. "
+            "I can answer data questions directly without one. Try:\n"
+            "- \"Which wells are performing above and below expectations?\"\n"
+            "- \"Show me the production profiles\"\n"
+            "- \"Break down the data mismatch per well\"\n"
+            "- \"Summarise the history matching status\"\n\n"
+            "To enable full conversational AI, install Ollama (https://ollama.com) "
+            "and pull a model: `ollama pull phi3:mini`"
         )
         for word in response.split():
             yield {"token": word + " ", "is_tool_call": False, "is_done": False}
