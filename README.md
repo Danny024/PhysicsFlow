@@ -3,13 +3,28 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v2.0.5** — Released 2026-03-14
+**Current version: v2.0.6** — Released 2026-03-14
 
 ![PhysicsFlow Demo](demo.gif)
 
 ---
 
 ## Changelog
+
+### v2.0.6 (2026-03-14) — AI assistant confirmed working end-to-end
+
+**Engine / AI Assistant**
+
+- **Confirmed working:** AI assistant now returns real well data for all data questions — no hallucinations, no UI-navigation steps
+- **Stale process guard:** added `test_direct_answer.py` diagnostic script to verify the correct engine is running; root cause of prior failures was an orphaned Python process on port 50051 that the app reused instead of starting a fresh engine
+- **Verified output** for *"Which wells are above/below expectations?"*:
+  - Above expectation: C-1H (peak 4,527 STB/day), E-4H, F-3H, E-1H
+  - Below expectation: F-2H (RMSE 0.397), B-4H, B-3H, B-1H, C-2H, D-1H, E-2H
+  - Overall RMSE: 0.1830
+
+**Desktop** — no binary change; shortcut remains `win-x64-v9`
+
+---
 
 ### v2.0.5 (2026-03-14) — AI direct-answer bypass (eliminates hallucination)
 
