@@ -94,6 +94,12 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 case nameof(TrainingViewModel.IsTraining):
                     _dashboard.IsTrainingActive = _training.IsTraining;
+                    // Training just completed with a real loss value → mark PINO as trained
+                    if (!_training.IsTraining && _training.BestLoss < double.MaxValue)
+                    {
+                        _dashboard.IsPinoTrained      = true;
+                        _dashboard.TrainingStatusText = $"Best loss: {_training.BestLoss:F6}";
+                    }
                     break;
                 case nameof(TrainingViewModel.ProgressPct):
                     _dashboard.TrainingProgress = _training.ProgressPct / 100.0;

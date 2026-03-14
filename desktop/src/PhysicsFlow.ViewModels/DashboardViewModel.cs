@@ -55,6 +55,11 @@ public partial class DashboardViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SurrogateStatus), nameof(SurrogateStatusColor), nameof(SurrogateDetail))]
     private string  _trainingStatusText  = "No training run";
 
+    /// <summary>Set to true the moment any training run completes with a finite loss.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SurrogateStatus), nameof(SurrogateStatusColor), nameof(SurrogateDetail))]
+    private bool    _isPinoTrained;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HMStatus), nameof(HMStatusColor), nameof(HMDetail))]
     private bool    _isHmActive;
@@ -97,14 +102,13 @@ public partial class DashboardViewModel : ObservableObject
     public string ActiveCells    => $"{GridNx * GridNy * GridNz:N0} total cells";
 
     // Surrogate status card
-    private bool HasBeenTrained => TrainingStatusText != "No training run";
     public string SurrogateStatus => IsTrainingActive ? "Training..."
-        : (HasBeenTrained ? "Trained ✓" : "Not trained");
+        : (IsPinoTrained ? "Trained ✓" : "Not trained");
     public string SurrogateStatusColor => IsTrainingActive ? "#E67E22"
-        : (HasBeenTrained ? "#2ECC71" : "#95A5A6");
+        : (IsPinoTrained ? "#2ECC71" : "#95A5A6");
     public string SurrogateDetail => IsTrainingActive
         ? $"Epoch progress: {TrainingProgress:P0}"
-        : (HasBeenTrained ? TrainingStatusText : "Run 'Train PINO' to build the surrogate model");
+        : (IsPinoTrained ? TrainingStatusText : "Run 'Train PINO' to build the surrogate model");
 
     // HM status card
     public string HMStatus => IsHmActive ? "Running..." : HmIteration > 0 ? "Completed" : "Not run";

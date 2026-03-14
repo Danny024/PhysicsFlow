@@ -319,7 +319,19 @@ public partial class ProjectSetupViewModel : ObservableObject
         sb.AppendLine($"    \"gas_gravity\": {PvtGasGravity},");
         sb.AppendLine($"    \"swi\": {PvtSwi}");
         sb.AppendLine($"  }},");
-        sb.AppendLine($"  \"wells\": [],");
+
+        // Serialize actual wells collection
+        var wellList = Wells.ToList();
+        sb.AppendLine($"  \"wells\": [");
+        for (int wi = 0; wi < wellList.Count; wi++)
+        {
+            var w     = wellList[wi];
+            var comma = wi < wellList.Count - 1 ? "," : "";
+            sb.AppendLine($"    {{\"name\": \"{w.Name}\", \"type\": \"{w.WellType}\", " +
+                          $"\"perf_count\": {w.PerfCount}, \"bhp_limit_bar\": {w.BhpLimitBar}}}{comma}");
+        }
+        sb.AppendLine($"  ],");
+
         sb.AppendLine($"  \"schedule\": [],");
         sb.AppendLine($"  \"eclipse_deck_path\": {(EclipseDeckPath == null ? "null" : $"\"{EclipseDeckPath}\"")},");
         sb.AppendLine($"  \"model_paths\": {{}},");

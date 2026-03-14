@@ -107,6 +107,7 @@ public class DashboardViewModelTests
     public void SurrogateStatus_ReflectsTrainingText()
     {
         var vm = Build();
+        vm.IsPinoTrained      = true;
         vm.TrainingStatusText = "Trained — loss 0.00234";
         vm.SurrogateDetail.Should().Contain("0.00234",
             "SurrogateDetail must echo back the training status text");
