@@ -3,11 +3,25 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v2.0.4** — Released 2026-03-14
+**Current version: v2.0.5** — Released 2026-03-14
 
 ---
 
 ## Changelog
+
+### v2.0.5 (2026-03-14) — AI direct-answer bypass (eliminates hallucination)
+
+**Engine / AI Assistant**
+
+- **`_try_direct_answer()`** — added LLM bypass for well-defined data queries (well performance, production profiles, above/below-expectation groupings, history matching status, mismatch breakdown); the method keyword-matches the user message, calls the relevant tools directly, builds a formatted markdown answer, and streams it without ever invoking Ollama; eliminates hallucinated UI-navigation responses from small models (phi3:mini, etc.) that ignore injected context
+- **`_format_well_perf_section()`** — formats above/below-expectation well groups with peak WOPR, water cut, cumulative oil, and per-well RMSE for every well
+- **`_format_hm_section()`** — formats HM status: not-started path reports baseline RMSE + well lists; in-progress/converged path reports iteration count, mismatch improvement, and convergence flag
+- **`_stream_text()`** — shared word-by-word streamer used by the direct-answer path, yielding the same dict schema as the LLM path for seamless UI compatibility
+- Direct answers are saved to conversation history, so follow-up questions still have context
+
+**Desktop** — no binary change; shortcut remains `win-x64-v9`
+
+---
 
 ### v2.0.4 (2026-03-14) — AI concise answers & HM status grounding
 

@@ -200,7 +200,17 @@ class ReservoirAgent:
         if proactive_context:
             logger.debug("Proactive tool context injected (%d chars)", len(proactive_context))
 
-        # Append user message
+        # ── Direct answer bypass ───────────────────────────────────────────
+        # For well-defined data queries, build the formatted answer directly
+        # from tool results without involving the LLM.  Small models
+        # (phi3:mini, etc.) hallucinate even when the data is injected in the
+        # system prompt, so for these questions we skip the model entirely.
+        direct_gen = self._try_direct_answer(session_id, message)
+        if direct_gen is not None:
+            yield from direct_gen
+            return
+
+        # Append user message to history (LLM path only)
         history.append({"role": "user", "content": message})
 
         full_response = ""
@@ -507,6 +517,200 @@ class ReservoirAgent:
         except Exception as e:
             logger.error(f"Tool {tool_name} error: {e}")
             return {"error": str(e)}
+
+    def _try_direct_answer(
+        self, session_id: str, message: str
+    ) -> "Generator[dict, None, None] | None":
+        """
+        Bypass the LLM for well-defined data queries.
+
+        Keyword-matches the message, calls relevant tools, builds a formatted
+        markdown answer, and returns a streaming Generator.  Returns None if
+        the message does not match any data-retrieval pattern (caller then
+        falls through to the normal LLM loop).
+        """
+        m = message.lower()
+
+        is_well_perf = any(k in m for k in [
+            "above", "below", "expect",              # above/below expectations
+            "production profile", "show me",
+            "well",                                  # catches "which wells", "well performance", etc.
+            "performing", "performance",
+            "oil rate", "water cut", "wcut", "wopr",
+            "producer", "best well", "worst well",
+            "production data", "rates",
+        ])
+
+        is_hm = any(k in m for k in [
+            "mismatch", "convergence", "history match",
+            "hm status", "hm result", "iteration", "areki",
+            "summarise", "summarize",
+            "matching poorly", "poorly match",
+        ])
+
+        if not (is_well_perf or is_hm):
+            return None
+
+        lines: list[str] = []
+
+        if is_well_perf:
+            try:
+                perf = self.tools.get_well_performance("all")
+                mm   = self.tools.get_data_mismatch_per_well()
+            except Exception as e:
+                logger.warning("Direct answer — well tools failed: %s", e)
+                perf, mm = {}, {}
+            lines.extend(self._format_well_perf_section(perf, mm))
+
+        if is_hm:
+            try:
+                hm = self.tools.get_hm_iteration_summary()
+            except Exception as e:
+                logger.warning("Direct answer — hm_summary failed: %s", e)
+                hm = {}
+            if lines:
+                lines.append("")
+            lines.extend(self._format_hm_section(hm))
+
+        if not lines:
+            return None
+
+        answer = "\n".join(lines)
+
+        # Save to history so follow-up questions have context
+        history = self._get_history(session_id)
+        history.append({"role": "user",      "content": message})
+        history.append({"role": "assistant", "content": answer})
+        self._set_history(session_id, history)
+
+        logger.debug("Direct answer delivered (%d chars), LLM bypassed.", len(answer))
+        return self._stream_text(answer)
+
+    def _format_well_perf_section(self, perf: dict, mismatch: dict) -> list[str]:
+        """Build markdown lines for well performance / above-below question."""
+        if "error" in perf:
+            return [f"_{perf['error']}_"]
+
+        well_summary = perf.get("well_summary", {})
+        if not well_summary:
+            return ["_(No production data available — run a simulation first.)_"]
+
+        source       = perf.get("data_source", "simulation")
+        above_exp    = mismatch.get("above_expectation", []) if isinstance(mismatch, dict) else []
+        below_exp    = mismatch.get("below_expectation", []) if isinstance(mismatch, dict) else []
+        worst_wells  = mismatch.get("worst_wells",        []) if isinstance(mismatch, dict) else []
+        per_well_mm  = mismatch.get("per_well",           {}) if isinstance(mismatch, dict) else {}
+        overall_rmse = mismatch.get("overall_rmse")           if isinstance(mismatch, dict) else None
+
+        def fmt_well(w: str) -> str:
+            d    = well_summary.get(w, {})
+            peak = d.get("peak_wopr_stbd")
+            wcut = d.get("current_wcut")
+            cum  = d.get("cum_oil_stb")
+            mm_v = per_well_mm.get(w, {}).get("total") if per_well_mm else None
+            parts = [f"**{w}**"]
+            if isinstance(peak, (int, float)):
+                parts.append(f"peak {peak:,.0f} STB/day")
+            if isinstance(wcut, (int, float)):
+                parts.append(f"wcut {wcut:.0%}")
+            if isinstance(cum, (int, float)):
+                parts.append(f"cum {cum:,.0f} STB")
+            if isinstance(mm_v, (int, float)):
+                parts.append(f"RMSE {mm_v:.3f}")
+            return "  • " + " | ".join(parts)
+
+        lines: list[str] = []
+
+        if above_exp:
+            lines.append(f"**Above expectation — {len(above_exp)} wells:**")
+            for w in above_exp[:12]:
+                lines.append(fmt_well(w))
+
+        if below_exp:
+            if lines:
+                lines.append("")
+            lines.append(f"**Below expectation — {len(below_exp)} wells:**")
+            for w in below_exp[:12]:
+                lines.append(fmt_well(w))
+
+        if not above_exp and not below_exp:
+            # No expectation classification — list all producers
+            lines.append("**Production summary (all producers):**")
+            for w in list(well_summary)[:15]:
+                lines.append(fmt_well(w))
+
+        if worst_wells:
+            lines.append(f"\n**Highest data mismatch:** {', '.join(worst_wells[:5])}")
+
+        if isinstance(overall_rmse, (int, float)):
+            lines.append(f"**Overall RMSE:** {overall_rmse:.4f}")
+
+        src_note = (
+            "_Data source: synthetic baseline — run PINO simulation for physics-based results._"
+            if source == "synthetic_baseline"
+            else "_Data source: live simulation results._"
+        )
+        lines.append(f"\n{src_note}")
+        return lines
+
+    def _format_hm_section(self, hm: dict) -> list[str]:
+        """Build markdown lines for history matching / convergence question."""
+        if not hm or "error" in hm:
+            msg = hm.get("error", "History matching data not available.") if hm else "History matching data not available."
+            return [f"_{msg}_"]
+
+        lines: list[str] = []
+
+        if hm.get("hm_status") == "not_started":
+            rmse  = hm.get("baseline_rmse", "N/A")
+            above = hm.get("wells_above_expectation", [])
+            below = hm.get("wells_below_expectation", [])
+            lines.append("**History matching:** Not started.")
+            lines.append(f"**Baseline RMSE:** {rmse}")
+            if above:
+                lines.append(f"**Above expectation:** {', '.join(above)}")
+            if below:
+                lines.append(f"**Below expectation:** {', '.join(below)}")
+            lines.append("_Start αREKI from the History Match panel to begin calibration._")
+        else:
+            n         = hm.get("n_iterations", 0)
+            init_mm   = hm.get("initial_mismatch")
+            final_mm  = hm.get("final_mismatch")
+            impr      = hm.get("improvement_pct", 0)
+            converged = hm.get("converged", False)
+            conv_str  = "CONVERGED ✓" if converged else "still converging"
+            lines.append(f"**History matching:** {n} αREKI iterations — {conv_str}")
+            if isinstance(init_mm, float) and isinstance(final_mm, float):
+                lines.append(
+                    f"**Mismatch:** {init_mm:.4f} → {final_mm:.4f} "
+                    f"({impr:.1f}% improvement)"
+                )
+
+        return lines
+
+    def _stream_text(self, text: str) -> Generator[dict, None, None]:
+        """Stream a pre-built text answer token by token."""
+        words    = text.split(" ")
+        full     = ""
+        for i, word in enumerate(words):
+            token  = word + (" " if i < len(words) - 1 else "")
+            full  += token
+            yield {
+                "token":       token,
+                "is_tool_call": False,
+                "tool_name":   "",
+                "tool_result": "",
+                "is_done":     False,
+                "chart_data":  None,
+            }
+            time.sleep(0.01)
+        yield {
+            "token":        "",
+            "is_tool_call": False,
+            "is_done":      True,
+            "full_response": full,
+            "chart_data":   None,
+        }
 
     def _mock_response(self, message: str) -> Generator[dict, None, None]:
         """Fallback when Ollama is not installed."""
