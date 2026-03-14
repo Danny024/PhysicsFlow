@@ -130,6 +130,14 @@ class ReservoirAgent:
         # Per-session conversation histories
         self._histories: dict[str, list[dict]] = {}
 
+        # Guarantee baseline well data is always present so direct-answer
+        # works even before the user loads a project file.
+        if not self.context_provider.well_results:
+            try:
+                self.context_provider._seed_norne_baseline()
+            except Exception as e:
+                logger.warning("Agent init: could not seed Norne baseline: %s", e)
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def chat(
