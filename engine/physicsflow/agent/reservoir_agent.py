@@ -539,7 +539,16 @@ class ReservoirAgent:
         """
         m = message.lower()
 
-        is_well_perf = any(k in m for k in [
+        # Ensemble / forecast questions take priority — must be checked first so
+        # "show me" / "well" keywords don't route them to the well-perf path.
+        is_ensemble = any(k in m for k in [
+            "p10", "p50", "p90",
+            "forecast", "ensemble",
+            "uncertainty", "percentile", "fan chart",
+            "eur", "expected ultimate recovery",
+        ])
+
+        is_well_perf = not is_ensemble and any(k in m for k in [
             "above", "below", "expect",              # above/below expectations
             "production profile", "show me",
             "well",                                  # catches "which wells", "well performance", etc.
@@ -556,10 +565,18 @@ class ReservoirAgent:
             "matching poorly", "poorly match",
         ])
 
-        if not (is_well_perf or is_hm):
+        if not (is_well_perf or is_hm or is_ensemble):
             return None
 
         lines: list[str] = []
+
+        if is_ensemble:
+            try:
+                perf = self.tools.get_well_performance("all")
+            except Exception as e:
+                logger.warning("Direct answer — ensemble well_performance failed: %s", e)
+                perf = {}
+            lines.extend(self._format_ensemble_section(perf))
 
         if is_well_perf:
             try:
@@ -593,6 +610,73 @@ class ReservoirAgent:
 
         logger.debug("Direct answer delivered (%d chars), LLM bypassed.", len(answer))
         return self._stream_text(answer)
+
+    def _format_ensemble_section(self, perf: dict) -> list[str]:
+        """Build P10/P50/P90 forecast table from well performance data."""
+        # Try real ensemble stats first (populated after αREKI runs)
+        try:
+            stats = self.tools.get_ensemble_statistics("wopr", "all")
+            if "error" not in stats and stats.get("p50"):
+                p10 = stats.get("p10", [])
+                p50 = stats.get("p50", [])
+                p90 = stats.get("p90", [])
+                lines = ["**P10/P50/P90 Production Forecast — Field Total (αREKI ensemble)**", ""]
+                if p50:
+                    lines.append(f"| Scenario | Peak WOPR (STB/day) |")
+                    lines.append(f"|---|---|")
+                    lines.append(f"| **P90** (optimistic) | {max(p90):,.0f} |")
+                    lines.append(f"| **P50** (base case)  | {max(p50):,.0f} |")
+                    lines.append(f"| **P10** (pessimistic) | {max(p10):,.0f} |")
+                lines.append("\n_Source: calibrated αREKI ensemble._")
+                return lines
+        except Exception:
+            pass
+
+        # No ensemble stats yet — derive synthetic P10/P50/P90 from baseline
+        well_summary = perf.get("well_summary", {})
+        if not well_summary:
+            return [
+                "**P10/P50/P90 Forecast:** Not available.",
+                "_Run αREKI history matching first to generate calibrated ensemble forecasts._",
+            ]
+
+        peaks = [d.get("peak_wopr_stbd") or 0 for d in well_summary.values()]
+        cums  = [d.get("cum_oil_stb")     or 0 for d in well_summary.values()]
+        field_peak = sum(peaks)
+        field_cum  = sum(cums)
+
+        lines = [
+            "**P10/P50/P90 Production Forecast — Norne Field**",
+            "",
+            "| Scenario | Field Peak WOPR (STB/day) | EUR (MMSTB) |",
+            "|---|---|---|",
+            f"| **P90** (optimistic) | {field_peak * 1.25:,.0f} | {field_cum * 1.25 / 1e6:.1f} |",
+            f"| **P50** (base case)  | {field_peak:,.0f} | {field_cum / 1e6:.1f} |",
+            f"| **P10** (pessimistic) | {field_peak * 0.75:,.0f} | {field_cum * 0.75 / 1e6:.1f} |",
+            "",
+            "**Top producers (P50 base case):**",
+        ]
+
+        sorted_wells = sorted(
+            well_summary.items(),
+            key=lambda x: x[1].get("peak_wopr_stbd") or 0,
+            reverse=True,
+        )
+        for w, d in sorted_wells[:8]:
+            peak = d.get("peak_wopr_stbd") or 0
+            cum  = d.get("cum_oil_stb")    or 0
+            if peak > 0:
+                lines.append(
+                    f"  • **{w}**: P50 peak {peak:,.0f} STB/day | "
+                    f"P10 {peak * 0.75:,.0f} | P90 {peak * 1.25:,.0f} | "
+                    f"EUR {cum / 1e6:.1f} MMSTB"
+                )
+
+        lines.append(
+            "\n_Forecast spread (P10–P90) estimated at ±25% of synthetic baseline. "
+            "Run αREKI history matching for calibrated ensemble forecasts._"
+        )
+        return lines
 
     def _format_well_perf_section(self, perf: dict, mismatch: dict) -> list[str]:
         """Build markdown lines for well performance / above-below question."""
