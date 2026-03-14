@@ -235,10 +235,13 @@ public partial class MainWindowViewModel : ObservableObject
                 if (grid.TryGetProperty("nz", out v))     nz = v.GetInt32();
             }
 
-            // Well count
+            // Well count — fall back to Norne field defaults (31) for pre-v8 files
+            // where the wells array was always saved as empty [].
             int wellCount = 0;
             if (root.TryGetProperty("wells", out var wells))
                 wellCount = wells.GetArrayLength();
+            if (wellCount == 0)
+                wellCount = 31;  // 22 Norne producers + 9 injectors
 
             // HM results
             bool hmComplete  = false;

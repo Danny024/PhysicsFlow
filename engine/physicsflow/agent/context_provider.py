@@ -330,8 +330,38 @@ class ReservoirContextProvider:
                     f"mismatch={last['data_mismatch']:.4f}"
                 )
 
-            # Performance breakdown
-            if self._per_well_mismatch:
+            # Performance breakdown with inline numbers
+            if self._per_well_mismatch and self._well_results:
+                above = [(w, v) for w, v in self._per_well_mismatch.items()
+                         if v.get("status") == "above_expectation"]
+                below = [(w, v) for w, v in self._per_well_mismatch.items()
+                         if v.get("status") == "below_expectation"]
+
+                def _peak(well_name: str) -> str:
+                    wr = self._well_results.get(well_name, {})
+                    wopr = wr.get("wopr", [])
+                    return f"{max(wopr):,.0f} STB/d" if wopr else "?"
+
+                def _wcut(well_name: str) -> str:
+                    wr = self._well_results.get(well_name, {})
+                    wopr = wr.get("wopr", [])
+                    wwpr = wr.get("wwpr", [])
+                    if not wopr or not wwpr:
+                        return "?"
+                    q_o, q_w = wopr[-1], wwpr[-1]
+                    total = q_o + q_w
+                    return f"{q_w/total:.0%}" if total > 0 else "?"
+
+                if above:
+                    parts = [f"{w} (peak {_peak(w)}, wcut {_wcut(w)})"
+                             for w, _ in above[:6]]
+                    lines.append(f"**Above expectation ({len(above)}):** {', '.join(parts)}")
+                if below:
+                    parts = [f"{w} (peak {_peak(w)}, wcut {_wcut(w)})"
+                             for w, _ in below[:6]]
+                    lines.append(f"**Below expectation ({len(below)}):** {', '.join(parts)}")
+
+            elif self._per_well_mismatch:
                 above = [w for w, v in self._per_well_mismatch.items()
                          if v.get("status") == "above_expectation"]
                 below = [w for w, v in self._per_well_mismatch.items()
