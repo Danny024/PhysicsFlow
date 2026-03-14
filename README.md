@@ -3,11 +3,24 @@
 > Physics-Informed Neural Operator · Adaptive Ensemble Kalman Inversion ·
 > Hybrid RAG Knowledge Assistant · Reservoir Knowledge Graph
 
-**Current version: v2.0.3** — Released 2026-03-14
+**Current version: v2.0.4** — Released 2026-03-14
 
 ---
 
 ## Changelog
+
+### v2.0.4 (2026-03-14) — AI concise answers & HM status grounding
+
+**Engine / AI Assistant**
+
+- **`get_hm_iteration_summary()`** — no longer returns a bare error when no HM has run; now returns a structured `hm_status="not_started"` dict with `baseline_rmse`, `wells_above_expectation`, `wells_below_expectation`, and a single actionable note so the model always has numbers to quote
+- **`get_project_summary()`** — HM state now inlined in every system context block: when HM has run → iteration count + initial/final mismatch + % improvement + convergence flag; when not run → baseline RMSE + "Start αREKI" note
+- **System prompt rules 5-7** added: model must quote RMSE and well lists when `hm_status="not_started"`; one-sentence-only response when any tool errors; model may use Active Project Context numbers directly when tools are unavailable
+- These changes eliminate generic UI-navigation answers for data questions — the assistant now responds with concrete numbers in all states (pre-simulation, post-simulation, pre-HM, post-HM)
+
+**Desktop** — no binary change; shortcut remains `win-x64-v9`
+
+---
 
 ### v2.0.3 (2026-03-14) — Dashboard, AI grounding & project persistence fixes
 
