@@ -331,7 +331,24 @@ class ReservoirTools:
     def get_hm_iteration_summary(self) -> dict:
         hm = self.ctx.hm_history
         if not hm:
-            return {"error": "No history matching results available."}
+            # No HM run yet — return a concrete pre-run status using baseline mismatch
+            mismatch = self.ctx.per_well_mismatch
+            baseline_rmse = self.ctx.overall_rmse
+            above = [w for w, v in mismatch.items() if v.get("status") == "above_expectation"]
+            below = [w for w, v in mismatch.items() if v.get("status") == "below_expectation"]
+            return {
+                "hm_status": "not_started",
+                "n_iterations": 0,
+                "converged": False,
+                "baseline_rmse": round(baseline_rmse, 4) if baseline_rmse else "N/A",
+                "wells_above_expectation": above,
+                "wells_below_expectation": below,
+                "note": (
+                    "No αREKI history matching run yet. "
+                    f"Baseline mismatch RMSE: {round(baseline_rmse, 4) if baseline_rmse else 'N/A'}. "
+                    "Navigate to History Match panel and click 'Start αREKI' to begin."
+                ),
+            }
 
         iterations = [h["iteration"] for h in hm]
         mismatches = [h["data_mismatch"] for h in hm]

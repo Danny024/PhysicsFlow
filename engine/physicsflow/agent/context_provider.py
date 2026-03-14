@@ -325,9 +325,21 @@ class ReservoirContextProvider:
 
             if self._hm_history:
                 last = self._hm_history[-1]
+                n = len(self._hm_history)
+                first_mm = self._hm_history[0]["data_mismatch"]
+                last_mm  = last["data_mismatch"]
+                impr = (first_mm - last_mm) / first_mm * 100 if first_mm else 0
+                converged = last.get("converged", False)
                 lines.append(
-                    f"**HM progress:** iter {last['iteration']}, "
-                    f"mismatch={last['data_mismatch']:.4f}"
+                    f"**HM status:** {n} αREKI iterations complete — "
+                    f"mismatch {first_mm:.4f} → {last_mm:.4f} "
+                    f"({impr:.1f}% improvement), "
+                    f"{'CONVERGED ✓' if converged else 'still converging'}"
+                )
+            else:
+                lines.append(
+                    f"**HM status:** Not started — baseline RMSE={self._overall_rmse:.4f}. "
+                    "Start αREKI from the History Match panel."
                 )
 
             # Performance breakdown with inline numbers
