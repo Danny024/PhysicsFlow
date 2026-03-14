@@ -83,8 +83,13 @@ public partial class ForecastViewModel : ObservableObject
     [RelayCommand]
     private async Task RunForecast()
     {
-        IsCalculating  = true;
-        StatusMessage  = "Running ensemble forecast...";
+        // Reset metrics so PropertyChanged fires when they're populated on completion
+        EurOilP50         = 0;
+        EurGasP50         = 0;
+        RecoveryFactorP50 = 0;
+        PeakOilRateP50    = 0;
+        IsCalculating     = true;
+        StatusMessage     = "Running ensemble forecast...";
 
         try
         {

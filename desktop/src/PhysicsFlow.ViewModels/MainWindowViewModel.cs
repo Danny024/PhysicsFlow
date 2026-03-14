@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using Application = System.Windows.Application;
@@ -64,8 +65,62 @@ public partial class MainWindowViewModel : ObservableObject
         _openSettingsDialog = openSettingsDialog;
 
         // Wire up project wizard events
-        _projectSetup.ProjectSaved    += (_, path) => { CurrentProjectName = System.IO.Path.GetFileNameWithoutExtension(path); CurrentView = _dashboard; };
-        _projectSetup.WizardCancelled += (_, _)    => CurrentView = _dashboard;
+        _projectSetup.ProjectSaved += (_, path) =>
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(path);
+            CurrentProjectName             = name;
+            AIAssistant.CurrentProjectPath = path;
+            // Push project metadata to dashboard cards
+            _dashboard.CurrentProjectName  = name;
+            _dashboard.TotalWells          = _projectSetup.WellCount;
+            _dashboard.GridNx              = _projectSetup.GridNx;
+            _dashboard.GridNy              = _projectSetup.GridNy;
+            _dashboard.GridNz              = _projectSetup.GridNz;
+            _dashboard.StatusMessage       = $"Project '{name}' saved successfully";
+            CurrentView = _dashboard;
+        };
+        _projectSetup.WizardCancelled += (_, _) => CurrentView = _dashboard;
+
+        // Wire up dashboard quick-action buttons → navigation
+        _dashboard.NewProjectRequested   += (_, _) => CurrentView = _projectSetup;
+        _dashboard.OpenProjectRequested  += (_, _) => OpenProjectFile();
+        _dashboard.StartTrainingRequested += (_, _) => CurrentView = _training;
+        _dashboard.StartHMRequested      += (_, _) => CurrentView = _historyMatching;
+
+        // Feed training status to dashboard status cards
+        _training.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(TrainingViewModel.IsTraining):
+                    _dashboard.IsTrainingActive = _training.IsTraining;
+                    break;
+                case nameof(TrainingViewModel.ProgressPct):
+                    _dashboard.TrainingProgress = _training.ProgressPct / 100.0;
+                    break;
+                case nameof(TrainingViewModel.BestLoss):
+                    if (_training.BestLoss < double.MaxValue)
+                        _dashboard.TrainingStatusText = $"Best loss: {_training.BestLoss:F6}";
+                    break;
+            }
+        };
+
+        // Feed HM status to dashboard status cards
+        _historyMatching.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(HistoryMatchingViewModel.IsRunning):
+                    _dashboard.IsHmActive = _historyMatching.IsRunning;
+                    break;
+                case nameof(HistoryMatchingViewModel.CurrentIteration):
+                    _dashboard.HmIteration = _historyMatching.CurrentIteration;
+                    break;
+                case nameof(HistoryMatchingViewModel.CurrentMismatch):
+                    _dashboard.HmMismatch = _historyMatching.CurrentMismatch;
+                    break;
+            }
+        };
 
         // Default view
         CurrentView = _dashboard;
@@ -138,6 +193,80 @@ public partial class MainWindowViewModel : ObservableObject
         AssistantPanelWidth = AssistantPanelVisible
             ? new GridLength(360, GridUnitType.Pixel)
             : new GridLength(0, GridUnitType.Pixel);
+    }
+
+    // ── Open project file dialog ──────────────────────────────────────────────
+
+    private void OpenProjectFile()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title           = "Open PhysicsFlow Project",
+            Filter          = "PhysicsFlow Project (*.pfproj)|*.pfproj|All files (*.*)|*.*",
+            DefaultExt      = ".pfproj",
+            CheckFileExists = true,
+        };
+
+        if (dlg.ShowDialog() != true) return;
+
+        var path = dlg.FileName;
+        try
+        {
+            var json    = System.IO.File.ReadAllText(path);
+            var doc     = JsonDocument.Parse(json);
+            var root    = doc.RootElement;
+
+            // Project name
+            var name = root.TryGetProperty("name", out var np) ? np.GetString() : null;
+            name ??= System.IO.Path.GetFileNameWithoutExtension(path);
+
+            // Grid dimensions
+            int nx = 46, ny = 112, nz = 22;
+            if (root.TryGetProperty("grid", out var grid))
+            {
+                if (grid.TryGetProperty("nx", out var v)) nx = v.GetInt32();
+                if (grid.TryGetProperty("ny", out v))     ny = v.GetInt32();
+                if (grid.TryGetProperty("nz", out v))     nz = v.GetInt32();
+            }
+
+            // Well count
+            int wellCount = 0;
+            if (root.TryGetProperty("wells", out var wells))
+                wellCount = wells.GetArrayLength();
+
+            // HM results
+            bool hmComplete  = false;
+            int  hmIter      = 0;
+            double hmMismatch = 0;
+            if (root.TryGetProperty("hm_results", out var hm))
+            {
+                if (hm.TryGetProperty("completed", out var hmc))   hmComplete  = hmc.GetBoolean();
+                if (hm.TryGetProperty("iterations", out var hmi))  hmIter      = hmi.GetInt32();
+                if (hm.TryGetProperty("mismatch",   out var hmm))  hmMismatch  = hmm.GetDouble();
+            }
+
+            // Apply to dashboard
+            CurrentProjectName              = name;
+            AIAssistant.CurrentProjectPath  = path;
+            _dashboard.CurrentProjectName   = name;
+            _dashboard.GridNx               = nx;
+            _dashboard.GridNy               = ny;
+            _dashboard.GridNz               = nz;
+            _dashboard.TotalWells           = wellCount;
+            _dashboard.HmIteration          = hmIter;
+            _dashboard.HmMismatch           = hmMismatch;
+            _dashboard.StatusMessage        = $"Project '{name}' loaded successfully";
+
+            Log.Information("[PROJECT] Loaded '{Name}' ({Nx}x{Ny}x{Nz}, {Wells} wells)", name, nx, ny, nz, wellCount);
+        }
+        catch (Exception ex)
+        {
+            _dashboard.StatusMessage = $"Failed to open project: {ex.Message}";
+            Log.Warning(ex, "[PROJECT] Failed to open {Path}", path);
+        }
+
+        // Always navigate to dashboard so user sees the updated state
+        CurrentView = _dashboard;
     }
 
     // ── Settings ──────────────────────────────────────────────────────────────

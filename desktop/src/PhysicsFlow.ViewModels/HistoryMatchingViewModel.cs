@@ -258,10 +258,164 @@ public partial class HistoryMatchingViewModel : ObservableObject
 
     private static PlotModel BuildFanChart()
     {
-        var m = new PlotModel { Title = "Ensemble Fan Chart — P10/P50/P90" };
-        m.Axes.Add(new DateTimeAxis { Position = AxisPosition.Bottom, Title = "Date" });
-        m.Axes.Add(new LinearAxis  { Position = AxisPosition.Left,   Title = "Rate (stb/day)" });
+        var m = new PlotModel
+        {
+            Title               = "Ensemble Fan Chart — P10/P50/P90",
+            Background          = OxyColor.FromRgb(0x0D, 0x1B, 0x2E),
+            PlotAreaBorderColor = OxyColor.FromRgb(0x2A, 0x3A, 0x4A),
+            TextColor           = OxyColor.FromRgb(0x88, 0x99, 0xAA),
+        };
+        m.Axes.Add(new DateTimeAxis
+        {
+            Position      = AxisPosition.Bottom,
+            Title         = "Date",
+            StringFormat  = "MMM-yy",
+            TextColor     = OxyColor.FromRgb(0x88, 0x99, 0xAA),
+            AxislineColor = OxyColor.FromRgb(0x2A, 0x3A, 0x4A),
+        });
+        m.Axes.Add(new LinearAxis
+        {
+            Position      = AxisPosition.Left,
+            Title         = "Rate (stb/day)",
+            Minimum       = 0,
+            TextColor     = OxyColor.FromRgb(0x88, 0x99, 0xAA),
+            AxislineColor = OxyColor.FromRgb(0x2A, 0x3A, 0x4A),
+        });
         return m;
+    }
+
+    /// <summary>Rebuild the fan chart for the selected well and quantity.</summary>
+    private void RebuildFanChart()
+    {
+        var m   = FanChartModel;
+        var rng = new Random((SelectedFanWell ?? "B-1H").GetHashCode()
+                             ^ (SelectedQuantity ?? "").GetHashCode());
+
+        m.Series.Clear();
+        m.Axes.Clear();
+
+        // Date axis: Norne production history 1997–2006
+        m.Axes.Add(new DateTimeAxis
+        {
+            Position      = AxisPosition.Bottom,
+            Title         = "Date",
+            StringFormat  = "MMM-yy",
+            TextColor     = OxyColor.FromRgb(0x88, 0x99, 0xAA),
+            AxislineColor = OxyColor.FromRgb(0x2A, 0x3A, 0x4A),
+            Minimum       = DateTimeAxis.ToDouble(new DateTime(1997, 1, 1)),
+            Maximum       = DateTimeAxis.ToDouble(new DateTime(2006, 12, 1)),
+        });
+
+        // Choose y-axis scale and title based on quantity
+        bool isOil   = SelectedQuantity?.StartsWith("Oil")   == true;
+        bool isWater = SelectedQuantity?.StartsWith("Water") == true;
+        bool isGas   = SelectedQuantity?.StartsWith("Gas")   == true;
+        bool isBhp   = SelectedQuantity?.StartsWith("BHP")   == true;
+
+        string yTitle = isGas ? "Rate (Mscf/day)" : isBhp ? "BHP (bar)" : "Rate (stb/day)";
+        m.Axes.Add(new LinearAxis
+        {
+            Position      = AxisPosition.Left,
+            Title         = yTitle,
+            Minimum       = 0,
+            TextColor     = OxyColor.FromRgb(0x88, 0x99, 0xAA),
+            AxislineColor = OxyColor.FromRgb(0x2A, 0x3A, 0x4A),
+        });
+
+        // Generate monthly time points
+        var dates = new List<DateTime>();
+        var d     = new DateTime(1997, 1, 1);
+        while (d <= new DateTime(2006, 12, 1)) { dates.Add(d); d = d.AddMonths(1); }
+        int n = dates.Count;
+
+        // Base rates per well/quantity (representative Norne values)
+        double baseRate = isOil   ? 4000 + rng.NextDouble() * 3000
+                        : isWater ? 1000 + rng.NextDouble() * 2000
+                        : isGas   ? 5000 + rng.NextDouble() * 4000
+                        : 240 + rng.NextDouble() * 40;   // BHP bar
+
+        // Generate P10/P50/P90 curves with realistic production decline + water breakthrough
+        var p10 = new double[n]; var p50 = new double[n]; var p90 = new double[n];
+        var obs = new double[n];
+
+        for (int i = 0; i < n; i++)
+        {
+            double t      = (double)i / n;
+            double rampUp = Math.Min(1.0, i / 6.0);           // 6-month ramp-up
+            double decline = isOil   ? Math.Exp(-1.8 * t)     // hyperbolic oil decline
+                           : isWater ? Math.Min(1.0, t * 1.5) // water increasing
+                           : isGas   ? Math.Exp(-1.2 * t)
+                           : 1.0 - 0.1 * t;                   // BHP slightly declining
+
+            double mid  = baseRate * rampUp * decline;
+            double spread = mid * (0.15 + 0.10 * (1 - t));    // spread narrows over time
+
+            p50[i] = Math.Max(0, mid + rng.NextDouble() * 40 - 20);
+            p10[i] = Math.Max(0, p50[i] - spread * (0.8 + rng.NextDouble() * 0.4));
+            p90[i] = p50[i] + spread * (0.8 + rng.NextDouble() * 0.4);
+            obs[i] = Math.Max(0, p50[i] * (0.92 + rng.NextDouble() * 0.16)
+                              + (rng.NextDouble() - 0.5) * spread * 0.3);
+        }
+
+        // P10–P90 uncertainty band (AreaSeries)
+        var band = new AreaSeries
+        {
+            Title            = "P10–P90",
+            Fill             = OxyColor.FromArgb(0x44, 0x88, 0xFF, 50),
+            Color            = OxyColor.FromArgb(0x44, 0x88, 0xFF, 0),
+            Color2           = OxyColor.FromArgb(0x44, 0x88, 0xFF, 0),
+            StrokeThickness  = 0,
+        };
+        for (int i = 0; i < n; i++)
+        {
+            var x = DateTimeAxis.ToDouble(dates[i]);
+            band.Points.Add(new DataPoint(x, p90[i]));
+            band.Points2.Add(new DataPoint(x, p10[i]));
+        }
+        m.Series.Add(band);
+
+        // P10 and P90 boundary lines (dashed)
+        foreach (var (vals, label, col) in new[]
+        {
+            (p90, "P10",  OxyColor.FromArgb(160, 0x44, 0x88, 0xFF)),
+            (p10, "P90",  OxyColor.FromArgb(160, 0x44, 0x88, 0xFF)),
+        })
+        {
+            var ls = new LineSeries
+            {
+                Title = label, Color = col,
+                StrokeThickness = 1, LineStyle = LineStyle.Dash,
+            };
+            for (int i = 0; i < n; i++)
+                ls.Points.Add(new DataPoint(DateTimeAxis.ToDouble(dates[i]), vals[i]));
+            m.Series.Add(ls);
+        }
+
+        // P50 median line (solid blue)
+        var p50Line = new LineSeries
+        {
+            Title           = "P50 (median)",
+            Color           = OxyColors.DodgerBlue,
+            StrokeThickness = 2,
+        };
+        for (int i = 0; i < n; i++)
+            p50Line.Points.Add(new DataPoint(DateTimeAxis.ToDouble(dates[i]), p50[i]));
+        m.Series.Add(p50Line);
+
+        // Observed data (scatter — orange dots)
+        var obsSeries = new ScatterSeries
+        {
+            Title          = "Observed",
+            MarkerType     = MarkerType.Circle,
+            MarkerSize     = 3,
+            MarkerFill     = OxyColor.FromRgb(0xFF, 0x8C, 0x00),
+        };
+        for (int i = 0; i < n; i += 2)   // every 2 months for clarity
+            obsSeries.Points.Add(new ScatterPoint(DateTimeAxis.ToDouble(dates[i]), obs[i]));
+        m.Series.Add(obsSeries);
+
+        m.Title = $"{SelectedFanWell} — {SelectedQuantity}";
+        m.InvalidatePlot(true);
     }
 
     private static PlotModel BuildRmseHeatmap()
@@ -279,16 +433,23 @@ public partial class HistoryMatchingViewModel : ObservableObject
         var rng      = new Random(7);
         double mm    = 1.0;
         double sCum  = 0.0;
-        double alpha = 1.0;
         _initialMismatch = mm;
 
         for (int it = 1; it <= MaxIterations && !ct.IsCancellationRequested; it++)
         {
-            await Task.Delay(600, ct);
+            await Task.Delay(50, ct);   // stub delay; real engine uses gRPC streaming
 
-            mm    *= (0.7 + rng.NextDouble() * 0.15);
-            alpha  = Math.Max(0.05, alpha * 0.75);
-            sCum  += alpha;
+            // Proper αREKI schedule: alpha_t = 1/N so sum over all N iterations = 1.0
+            // Add small noise to simulate adaptive step selection
+            var rng2  = new Random(it * 13);
+            double alpha = (1.0 / MaxIterations) * (0.9 + rng.NextDouble() * 0.2);
+            sCum += alpha;
+
+            // Mismatch decays quickly early, slows as it approaches noise floor
+            double decay = it <= 5
+                ? (0.72 + rng.NextDouble() * 0.10)   // fast initial improvement
+                : (0.88 + rng.NextDouble() * 0.08);  // slower refinement
+            mm = Math.Max(0.04, mm * decay);
 
             CurrentIteration = it;
             CurrentMismatch  = mm;
@@ -296,11 +457,14 @@ public partial class HistoryMatchingViewModel : ObservableObject
             SCumulative      = sCum;
             ProgressPct      = (double)it / MaxIterations * 100.0;
             ImprovementPct   = (1.0 - mm / _initialMismatch) * 100.0;
+            StatusMessage    = $"Iteration {it}/{MaxIterations}  |  mismatch: {mm:F4}  |  α: {alpha:F4}  |  s_cum: {sCum:F3}";
 
             _mismatchSeries.Points.Add(new DataPoint(it, mm));
             MismatchPlotModel.InvalidatePlot(true);
 
-            var converged = sCum >= 1.0 || mm < 0.05;
+            // Converge only when s_cumulative >= 1.0 AND mismatch is low,
+            // or when mismatch drops below noise floor
+            var converged = (sCum >= 1.0 && mm < 0.15) || mm < 0.05;
             IterationLog.Insert(0,
                 new HmIterationItem(it, mm, alpha, sCum, converged));
 
@@ -308,8 +472,9 @@ public partial class HistoryMatchingViewModel : ObservableObject
             {
                 IsConverged      = true;
                 StatusMessage    = $"Converged at iteration {it} — mismatch: {mm:F4}";
-                ConvergenceLabel = $"✅ Converged  (s_cumulative={sCum:F3})";
+                ConvergenceLabel = $"Converged  (s_cumulative={sCum:F3})";
                 BuildWellRmseTable(rng);
+                OnPropertyChanged(nameof(HasResults));
                 break;
             }
         }
@@ -317,8 +482,9 @@ public partial class HistoryMatchingViewModel : ObservableObject
         if (!IsConverged && !ct.IsCancellationRequested)
         {
             StatusMessage    = $"Max iterations reached — mismatch: {CurrentMismatch:F4}";
-            ConvergenceLabel = $"⚠ Not converged (s_cumulative={SCumulative:F3})";
+            ConvergenceLabel = $"Not converged (s_cumulative={SCumulative:F3})";
             BuildWellRmseTable(rng);
+            OnPropertyChanged(nameof(HasResults));
         }
     }
 
@@ -339,7 +505,11 @@ public partial class HistoryMatchingViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasResults));
+        RebuildFanChart();
     }
+
+    partial void OnSelectedFanWellChanged(string? value)  => RebuildFanChart();
+    partial void OnSelectedQuantityChanged(string value)  => RebuildFanChart();
 }
 
 // ── Supporting records ────────────────────────────────────────────────────────
